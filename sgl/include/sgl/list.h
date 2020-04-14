@@ -31,7 +31,8 @@ inline bool list_empty(const list_t* list) { return list_size(list) <= 0; }
 // Returns a pointer to the element at INDEX in the dynamic array LIST.
 inline void* list_ref(const list_t* list, long index)
 {
-	assert(0 <= index && index <= list->length);
+	assert(0 <= index);
+	assert(index <= list->length);
 	return list->data + list->elem_size * index;
 }
 

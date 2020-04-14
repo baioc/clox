@@ -7,15 +7,10 @@
 
 #include "core.h" // size_t, err_t, NULL, byte_t, swap
 
-
 extern inline long list_size(const list_t* list);
-
 extern inline bool list_empty(const list_t* list);
-
 extern inline void* list_ref(const list_t* list, long index);
-
 extern inline void list_pop(list_t* list, void* sink);
-
 extern inline void list_for_each(const list_t* list, void (*function)(void*));
 
 
@@ -63,7 +58,8 @@ err_t list_append(list_t* list, const void* element)
 
 err_t list_insert(list_t* list, long index, const void* element)
 {
-	assert(0 <= index && index <= list->length);
+	assert(0 <= index);
+	assert(index <= list->length);
 
 	// append
 	const err_t error = list_append(list, element);
@@ -81,7 +77,8 @@ err_t list_insert(list_t* list, long index, const void* element)
 
 void list_remove(list_t* list, long index, void* sink)
 {
-	assert(0 <= index && index < list->length);
+	assert(0 <= index);
+	assert(index < list->length);
 
 	// send copy to output
 	byte_t * const source = list_ref(list, index);
