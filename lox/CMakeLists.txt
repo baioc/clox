@@ -8,6 +8,7 @@ include_directories(${CMAKE_SOURCE_DIR}/sgl/include)
 
 add_executable(lox apps/main.c)
 target_link_libraries(lox PUBLIC clox)
+target_include_directories(lox PUBLIC include)
 
 add_library(clox
 	include/clox/common.h
@@ -16,6 +17,8 @@ add_library(clox
 	src/chunk.c
 	include/clox/debug.h
 	src/debug.c
+	include/clox/value.h
+	src/value.c
 )
 target_include_directories(clox PUBLIC include/clox)
 target_link_libraries(lox PRIVATE sgl)

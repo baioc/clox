@@ -1,10 +1,9 @@
-#ifndef H_CLOX_DEBUG
-#define H_CLOX_DEBUG
+#ifndef CLOX_DEBUG_H
+#define CLOX_DEBUG_H
 
-#include "chunk.h" // chunk_t
-#include "common.h" // intptr_t
+#include "chunk.h" // Chunk
 
-// Prints the contents of CHUNK (named NAME) in a human-readable format.
-void disassemble_chunk(const chunk_t* chunk, const char* name);
+// Prints the contents of CHUNK called NAME in a human-readable format.
+void disassemble_chunk(const Chunk* chunk, const char* name);
 
-#endif // H_CLOX_DEBUG
+#endif // CLOX_DEBUG_H

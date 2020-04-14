@@ -2,25 +2,45 @@
 
 #include <stdio.h>
 
-#include "chunk.h" // chunk_t
+#include "chunk.h" // Chunk
 #include "common.h" // intptr_t, uint8_t
+#include "value.h" // value_print
 
 
-static intptr_t simple_instruction(const char* name, intptr_t offset)
+static int constant_instruction(const char* name,
+                                const Chunk* chunk,
+                                intptr_t offset)
+{
+	const int8_t const_idx = chunk_get_byte(chunk, offset + 1);
+	printf("%-16s %4d '", name, const_idx);
+	value_print(chunk_get_constant(chunk, const_idx));
+	printf("'\n");
+	return 2;
+}
+
+static int simple_instruction(const char* name, intptr_t offset)
 {
 	printf("%s\n", name);
 	return 1;
 }
 
 // Prints an instruction OFFSET bytes into CHUNK and returns its size.
-static intptr_t disassemble_instruction(const chunk_t* chunk, intptr_t offset)
+static int disassemble_instruction(const Chunk* chunk, intptr_t offset)
 {
-	// print offset
+	// print byte address and line number
 	printf("%04d ", offset);
+	const int line = chunk_get_line(chunk, offset);
+	if (offset > 0 && line == chunk_get_line(chunk, offset - 1)) {
+		printf("   | ");
+	} else {
+		printf("%4d ", line);
+	}
 
 	// switch on instruction print
-	const uint8_t instruction = chunk_get(chunk, offset);
+	const uint8_t instruction = chunk_get_byte(chunk, offset);
 	switch (instruction) {
+		case OP_CONSTANT:
+			return constant_instruction("OP_CONSTANT", chunk, offset);
 		case OP_RETURN:
 			return simple_instruction("OP_RETURN", offset);
 		default:
@@ -29,7 +49,7 @@ static intptr_t disassemble_instruction(const chunk_t* chunk, intptr_t offset)
 	}
 }
 
-void disassemble_chunk(const chunk_t* chunk, const char* name)
+void disassemble_chunk(const Chunk* chunk, const char* name)
 {
 	printf("== %s ==\n", name);
 	for (intptr_t offset = 0; offset < chunk_size(chunk);)
