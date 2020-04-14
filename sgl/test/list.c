@@ -19,13 +19,16 @@ static inline void list_primitives(void)
 	list_t numbers;
 
 	// initially, size should be 0
-	list_init_sized(&numbers, sizeof(int), 0);
+	int err = list_init(&numbers, 0, sizeof(int));
+	assert(!err);
 	assert(list_size(&numbers) == 0);
 
 	// array numbers are inserted as if in a reversed stack
 	// numbers := [8, 7, 6, 5, 4, 3, 2, 1]
-	for (int i = 0; i < n; ++i)
-		list_insert_at(&numbers, &array[i], 0);
+	for (int i = 0; i < n; ++i) {
+		err = list_insert(&numbers, 0, &array[i]);
+		assert(!err);
+	}
 
 	// size should be the number of numbers
 	assert(list_size(&numbers) == n);
@@ -34,7 +37,7 @@ static inline void list_primitives(void)
 		// check if the list's front is the expected value, then pop it
 		int num = *((int*)list_ref(&numbers, 0));
 		assert(num == array[i]);
-		list_remove_from(&numbers, &num, 0);
+		list_remove(&numbers, 0, &num);
 	}
 
 	// after removals, size should be zero
@@ -57,13 +60,15 @@ static inline void list_pointers(void)
 	list_t names;
 
 	// initially, size should be 0
-	list_init_sized(&names, sizeof(char*), 3);
+	int err = list_init(&names, 3, sizeof(char*));
+	assert(!err);
 	assert(list_size(&names) == 0);
 
 	// only the pointers are inserted into the list
 	for (int i = 0; i < n; ++i) {
 		const char* copy = strdup(array[i]); // must be freed
-		list_insert(&names, &copy);
+		err = list_append(&names, &copy);
+		assert(!err);
 	}
 
 	// frees each pointer (they are still on the list)
@@ -83,7 +88,7 @@ static inline void list_pointers(void)
 bool balanced(const char* string)
 {
 	list_t stack;
-	list_init(&stack, sizeof(char));
+	list_init(&stack, 0, sizeof(char));
 
 	const size_t length = strlen(string);
 	for (int i = 0; i < length; ++i) {
@@ -91,16 +96,16 @@ bool balanced(const char* string)
 
 		// if opening, push it on top of the stack
 		if (c == '(' || c == '[' || c == '{') {
-			list_insert(&stack, &c);
+			list_append(&stack, &c);
 		}
 		// if closing, the top of the stack must be the opening
 		else if (c == ')' || c == ']' || c == '}') {
-			if (list_size(&stack) <= 0) {
+			if (list_empty(&stack)) {
 				goto FAIL;
 			}
 			else {
 				char last_open;
-				list_remove(&stack, &last_open);
+				list_pop(&stack, &last_open);
 
 				if (   (last_open == '(' && c != ')')
 				    || (last_open == '[' && c != ']')
@@ -113,7 +118,7 @@ bool balanced(const char* string)
 	}
 
 	// success when all brackets were closed
-	if (list_size(&stack) == 0) {
+	if (list_empty(&stack)) {
 		list_destroy(&stack);
 		return true;
 	}
