@@ -2,9 +2,10 @@
 
 #include <assert.h>
 #include <string.h> // strcmp
+#include <stdlib.h> // malloc, free
 
 
-static inline void swap_primitives(void)
+static void swap_primitives(void)
 {
 	int x = 5;
 	int y = 7;
@@ -13,7 +14,7 @@ static inline void swap_primitives(void)
 	assert(y == 5);
 }
 
-static inline void swap_pointers(void)
+static void swap_pointers(void)
 {
 	char* s1 = "Hello, generic";
 	char* s2 = "World!";
@@ -22,9 +23,26 @@ static inline void swap_pointers(void)
 	assert(strcmp(s2, "Hello, generic") == 0);
 }
 
+static void test_freeref(void)
+{
+	void* ptr = malloc(42);
+	assert(ptr != NULL);
+	freeref(&ptr);
+	assert(ptr == NULL);
+	free(ptr); // safe
+}
+
+static void test_array_size(void)
+{
+	int array[50];
+	assert(ARRAY_SIZE(array) == 50);
+}
+
 err_t main(int argc, const char* argv[])
 {
 	swap_primitives();
 	swap_pointers();
+	test_freeref();
+	test_array_size();
 	return 0;
 }

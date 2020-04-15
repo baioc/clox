@@ -2,18 +2,15 @@
 
 #include <stdio.h>
 
-#include "chunk.h" // Chunk
 #include "common.h" // intptr_t, uint8_t
-#include "value.h" // value_print
+#include "value.h" // Value, value_print
 
 
-static int constant_instruction(const char* name,
-                                const Chunk* chunk,
-                                intptr_t offset)
+static int constant_instruction(const char* op, const Chunk* chk, intptr_t addr)
 {
-	const int8_t const_idx = chunk_get_byte(chunk, offset + 1);
-	printf("%-16s %4d '", name, const_idx);
-	value_print(chunk_get_constant(chunk, const_idx));
+	const int8_t const_idx = chunk_get_byte(chk, addr + 1);
+	printf("%-16s %4d '", op, const_idx);
+	value_print(chunk_get_constant(chk, const_idx));
 	printf("'\n");
 	return 2;
 }

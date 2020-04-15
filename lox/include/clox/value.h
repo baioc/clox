@@ -5,8 +5,6 @@
 
 #include <sgl/list.h>
 
-#include "common.h" // uint8_t
-
 
 typedef double Value;
 
@@ -25,16 +23,20 @@ inline void value_array_init(ValueArray* array)
 }
 
 // Deallocates any resources acquired by value_array_init() on ARRAY.
-inline void value_array_destroy(ValueArray* array) { list_destroy(array); }
+inline void value_array_destroy(ValueArray* array)
+{
+	list_destroy(array);
+}
 
 // Gets the current size of ARRAY.
-inline int value_array_size(const ValueArray* array) {return list_size(array);}
+inline int value_array_size(const ValueArray* array)
+{
+	return list_size(array);
+}
 
 // Gets a value from position INDEX of ARRAY.
 inline Value value_array_get(const ValueArray* array, int index)
 {
-	assert(0 <= index);
-	assert(index < value_array_size(array));
 	return *((Value*)list_ref(array, index));
 }
 

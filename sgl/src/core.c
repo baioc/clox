@@ -9,3 +9,5 @@ void swap(void *a, void *b, size_t size)
 	memcpy(a, b, size);
 	memcpy(b, tmp, size);
 }
+
+extern inline void freeref(void** ptr);

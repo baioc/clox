@@ -6,31 +6,26 @@
 #include <sgl/list.h>
 
 #include "common.h" // uint8_t, intptr_t, int8_t
-#include "value.h" // ValueArray, Value
+#include "value.h" // Value, ValueArray
 
 
 // must fit into an uint8_t
-typedef enum {
+enum OpCode {
 	OP_CONSTANT,
 	OP_RETURN,
-} opcode;
+};
 
 typedef struct {
-	list_t code;
+	list_t     code;
 	ValueArray constants;
-	list_t lines;
+	list_t     lines;
 } Chunk;
 
 
 // Initializes an empty CHUNK. chunk_destroy() must be called on it later.
-inline void chunk_init(Chunk* chunk)
-{
-	list_init(&chunk->code, 0, sizeof(uint8_t));
-	value_array_init(&chunk->constants);
-	list_init(&chunk->lines, 0, sizeof(int));
-}
+void chunk_init(Chunk* chunk);
 
-// Deallocates any resources acquired by chunk_init() on CHUNK.
+// Deallocates any resources acquired by chunk_init() for CHUNK.
 inline void chunk_destroy(Chunk* chunk)
 {
 	list_destroy(&chunk->code);
@@ -39,31 +34,27 @@ inline void chunk_destroy(Chunk* chunk)
 }
 
 // Gets the current size of CHUNK.
-inline long chunk_size(const Chunk* chunk) { return list_size(&chunk->code); }
-
-// Appends BYTE to CHUNK.
-inline void chunk_write(Chunk* chunk, uint8_t byte, int line)
+inline long chunk_size(const Chunk* chunk)
 {
-	list_append(&chunk->code, &byte);
-	list_append(&chunk->lines, &line);
+	return list_size(&chunk->code);
 }
+
+// Appends BYTE originated at LINE to CHUNK.
+void chunk_write(Chunk* chunk, uint8_t byte, int line);
 
 // Gets a byte from OFFSET inside the CHUNK.
 inline uint8_t chunk_get_byte(const Chunk* chunk, intptr_t offset)
 {
-	assert(0 <= offset);
-	assert(offset < chunk_size(chunk));
 	return *((uint8_t*)list_ref(&chunk->code, offset));
 }
 
-// Gets the line the originated the bytecode at OFFSET inside the CHUNK.
-inline int chunk_get_line(const Chunk* chunk, intptr_t offset)
-{
-	return *((int*)list_ref(&chunk->lines, offset));
-}
+// Gets the line that originated the bytecode at OFFSET inside the CHUNK.
+int chunk_get_line(const Chunk* chunk, intptr_t offset);
 
 /** Adds a constant VALUE to the CHUNK's constant pool.
- * Returns the pool index where it was added for later access. */
+ * Returns the pool index where it was added for later access.
+ * @NOTE: Because OP_CONSTANT only uses a single byte for its operand, a
+ * constant pool has a maximum capacity of 256 elements.*/
 inline int8_t chunk_add_constant(Chunk* chunk, Value value)
 {
 	const int index = value_array_size(&chunk->constants);

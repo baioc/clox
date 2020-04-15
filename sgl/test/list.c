@@ -2,19 +2,18 @@
 
 #include <assert.h>
 #include <string.h> // strdup
-#include <stdlib.h> // free
-#include <stdbool.h>
+
+#include <sgl/core.h> // ARRAY_SIZE, freeref, bool
 
 
-#define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
-
-// Checks if string has a balanced sequence of brackets <(), [], {}>.
-bool balanced(const char* string);
-
-
-static inline void list_primitives(void)
+static int intcmp(const int* a, const int* b)
 {
-	const int array[] = {1, 2, 3, 4, 5, 6, 7, 8};
+	return *a - *b;
+}
+
+static void list_primitives(void)
+{
+	const int array[] = {-6, 0, 2, 3, 6, 7, 11};
 	const int n = ARRAY_SIZE(array);
 	list_t numbers;
 
@@ -23,9 +22,8 @@ static inline void list_primitives(void)
 	assert(!err);
 	assert(list_size(&numbers) == 0);
 
-	// array numbers are inserted as if in a reversed stack
-	// numbers := [8, 7, 6, 5, 4, 3, 2, 1]
-	for (int i = 0; i < n; ++i) {
+	// reverse insert numbers in reverse order -> normal order
+	for (int i = n - 1; i >= 0; --i) {
 		err = list_insert(&numbers, 0, &array[i]);
 		assert(!err);
 	}
@@ -33,8 +31,16 @@ static inline void list_primitives(void)
 	// size should be the number of numbers
 	assert(list_size(&numbers) == n);
 
-	for (int i = n - 1; i >= 0; --i) {
-		// check if the list's front is the expected value, then pop it
+	// test bsearch
+	int x = 6;
+	int found = list_bsearch(&numbers, &x, (int (*)(const void*, const void*))intcmp);
+	assert(found == 4);
+	x = -11;
+	found = list_bsearch(&numbers, &x, (int (*)(const void*, const void*))intcmp);
+	assert(found < 0);
+
+	// check if the list's front is the expected value, then pop it
+	for (int i = 0; i < n; ++i) {
 		int num = *((int*)list_ref(&numbers, 0));
 		assert(num == array[i]);
 		list_remove(&numbers, 0, &num);
@@ -46,14 +52,7 @@ static inline void list_primitives(void)
 	list_destroy(&numbers);
 }
 
-static void strfree(void* ptr)
-{
-	char** str_ptr = (char**) ptr;
-	free(*str_ptr);
-	*str_ptr = NULL;
-}
-
-static inline void list_pointers(void)
+static void list_pointers(void)
 {
 	const char* array[] = {"Alyssa", "Bob", "Carlos"};
 	const int n = ARRAY_SIZE(array);
@@ -72,7 +71,7 @@ static inline void list_pointers(void)
 	}
 
 	// frees each pointer (they are still on the list)
-	list_for_each(&names, strfree);
+	list_for_each(&names, (void (*)(void*))freeref);
 	assert(list_size(&names) == n);
 
 	// check if for_each did the right thing
@@ -84,7 +83,7 @@ static inline void list_pointers(void)
 	list_destroy(&names);
 }
 
-
+// Checks if string has a balanced sequence of brackets <(), [], {}>.
 bool balanced(const char* string)
 {
 	list_t stack;
@@ -127,7 +126,7 @@ bool balanced(const char* string)
 	return false;
 }
 
-static inline void list_balance_check(void)
+static void list_stack(void)
 {
 	const char* parens[] = {
 		"(foo)",
@@ -155,6 +154,6 @@ int main(int argc, const char* argv[])
 {
 	list_primitives();
 	list_pointers();
-	list_balance_check();
+	list_stack();
 	return 0;
 }
