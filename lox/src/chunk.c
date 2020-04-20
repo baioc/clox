@@ -2,6 +2,8 @@
 
 #include <stdlib.h> // bsearch
 
+#include "memory.h" // free_objects
+
 
 struct line {
 	int      number;
@@ -13,14 +15,16 @@ void chunk_init(Chunk* chunk)
 {
 	list_init(&chunk->code, 0, sizeof(uint8_t));
 	value_array_init(&chunk->constants);
+	chunk->objects = NULL;
 	list_init(&chunk->lines, 0, sizeof(struct line));
 }
 
 void chunk_destroy(Chunk* chunk)
 {
-	list_destroy(&chunk->code);
-	value_array_destroy(&chunk->constants);
 	list_destroy(&chunk->lines);
+	free_objects(&chunk->objects);
+	value_array_destroy(&chunk->constants);
+	list_destroy(&chunk->code);
 }
 
 long chunk_size(const Chunk* chunk)

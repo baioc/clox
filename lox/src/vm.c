@@ -1,23 +1,36 @@
 #include "vm.h"
 
 #include <stdio.h>
+#include <stdarg.h>
+#include <stdlib.h> // malloc
+#include <string.h> // memcpy
 
-#include "value.h" // value_print
+#include "value.h"
+#include "memory.h" // free_objects
+#include "object.h"
 #include "chunk.h"
 #include "compiler.h"
-#include "common.h" // DEBUG_TRACE_EXECUTION
+#include "common.h" // DEBUG_TRACE_EXECUTION, DEBUG_DYNAMIC_MEMORY
 #ifdef DEBUG_TRACE_EXECUTION
 #	include "debug.h" // disassemble_instruction
 #endif
 
 
-void vm_init(VM* vm)
+static void stack_reset(VM* vm)
 {
 	vm->tos = vm->stack;
 }
 
+void vm_init(VM* vm)
+{
+	stack_reset(vm);
+	vm->objects = NULL;
+}
+
 void vm_destroy(VM* vm)
-{}
+{
+	free_objects(&vm->objects);
+}
 
 static void stack_push(VM* vm, Value value)
 {
@@ -29,6 +42,50 @@ static Value stack_pop(VM* vm)
 {
 	vm->tos--;
 	return *vm->tos;
+}
+
+static Value stack_peek(const VM* vm, int distance)
+{
+	return vm->tos[-1 - distance];
+}
+
+static bool value_is_falsey(Value value)
+{
+	return value_is_nil(value)
+	    || (value_is_bool(value) && value_as_bool(value) == false);
+}
+
+static void concatenate_strings(VM* vm)
+{
+	const ObjString* b = value_as_string(stack_pop(vm));
+	const ObjString* a = value_as_string(stack_pop(vm));
+
+	// @TODO: optimize concatenation of immutable strings
+	const int length = a->length + b->length;
+	char* chars = malloc(sizeof(char) * (length + 1));
+	memcpy(chars, a->chars, a->length);
+	memcpy(chars + a->length, b->chars, b->length);
+	chars[length] = '\0';
+#ifdef DEBUG_DYNAMIC_MEMORY
+	printf(";;; Allocating string \"%s\" at %p\n", chars, chars);
+#endif
+
+	const ObjString* result = obj_string_take(&vm->objects, chars, length);
+	stack_push(vm, obj_value((Obj*)result));
+}
+
+static void runtime_error(VM* vm, const char* format, ...)
+{
+	va_list args;
+	va_start(args, format);
+	vfprintf(stderr, format, args);
+	va_end(args);
+	fputs("\n", stderr);
+
+	const int line = chunk_get_line(vm->chunk, vm->pc - 1);
+	fprintf(stderr, "[line %d] in script\n", line);
+
+	stack_reset(vm);
 }
 
 static void debug_trace_run(const VM* vm)
@@ -49,10 +106,16 @@ static InterpretResult run(VM* vm)
 {
 	#define READ_BYTE() chunk_get_byte(vm->chunk, vm->pc++)
 	#define READ_CONSTANT() chunk_get_constant(vm->chunk, READ_BYTE())
-	#define BINARY_OP(op) do { \
-		const Value b = stack_pop(vm); \
-		const Value a = stack_pop(vm); \
-		stack_push(vm, a op b); \
+	#define BINARY_OP(type_value, op) do { \
+		if (   !value_is_number(stack_peek(vm, 0)) \
+		    || !value_is_number(stack_peek(vm, 1)) \
+		   ) { \
+			runtime_error(vm, "Operands must be numbers."); \
+			return INTERPRET_RUNTIME_ERROR; \
+		} \
+		const double b = value_as_number(stack_pop(vm)); \
+		const double a = value_as_number(stack_pop(vm)); \
+		stack_push(vm, type_value(a op b)); \
 	} while (0)
 
 	for (;;) {
@@ -63,12 +126,40 @@ static InterpretResult run(VM* vm)
 				value_print(stack_pop(vm));
 				printf("\n");
 				return INTERPRET_OK;
-			case OP_ADD: BINARY_OP(+); break;
-			case OP_SUBTRACT: BINARY_OP(-); break;
-			case OP_MULTIPLY: BINARY_OP(*); break;
-			case OP_DIVIDE: BINARY_OP(/); break;
-			case OP_NEGATE: stack_push(vm, -stack_pop(vm)); break;
 			case OP_CONSTANT: stack_push(vm, READ_CONSTANT()); break;
+			case OP_NIL:      stack_push(vm, nil_value()); break;
+			case OP_TRUE:     stack_push(vm, bool_value(true)); break;
+			case OP_FALSE:    stack_push(vm, bool_value(false)); break;
+			case OP_EQUAL: {
+				const Value b = stack_pop(vm);
+				const Value a = stack_pop(vm);
+				stack_push(vm, bool_value(value_equal(a, b)));
+				break;
+			}
+			case OP_GREATER:  BINARY_OP(bool_value, >); break;
+			case OP_LESS:     BINARY_OP(bool_value, <); break;
+			case OP_ADD:
+				if (value_is_string(stack_peek(vm, 0))
+				 && value_is_string(stack_peek(vm, 1))
+				   ) {
+					concatenate_strings(vm);
+				} else {
+					BINARY_OP(number_value, +);
+				}
+				break;
+			case OP_SUBTRACT: BINARY_OP(number_value, -); break;
+			case OP_MULTIPLY: BINARY_OP(number_value, *); break;
+			case OP_DIVIDE:   BINARY_OP(number_value, /); break;
+			case OP_NOT:
+				stack_push(vm, bool_value(value_is_falsey(stack_pop(vm))));
+				break;
+			case OP_NEGATE:
+				if (!value_is_number(stack_peek(vm, 0))) {
+					runtime_error(vm, "Operand must be a number.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				stack_push(vm, number_value(-value_as_number(stack_pop(vm))));
+				break;
 		}
 	}
 

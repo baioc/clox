@@ -3,16 +3,17 @@
 
 #include "chunk.h"
 #include "common.h" // intptr_t
-#include "value.h" // Value
+#include "value.h" // Obj
 
 // @TODO: determine needed stack size for each chunk during compilation
 #define STACK_MAX 256
 
 typedef struct {
 	const Chunk* chunk;
-	intptr_t pc;
-	Value stack[STACK_MAX];
-	Value* tos;
+	intptr_t     pc;
+	Value        stack[STACK_MAX];
+	Value*       tos;
+	Obj*         objects;
 } VM;
 
 typedef enum {

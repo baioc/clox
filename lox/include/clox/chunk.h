@@ -4,16 +4,23 @@
 #include <sgl/list.h>
 
 #include "common.h" // uint8_t, intptr_t
-#include "value.h" // Value, ValueArray
+#include "value.h" // Value, ValueArray, Obj
 
 
 // must fit into an uint8_t
 enum OpCode {
 	OP_CONSTANT,
+	OP_NIL,
+	OP_TRUE,
+	OP_FALSE,
+	OP_EQUAL,
+	OP_GREATER,
+	OP_LESS,
 	OP_ADD,
 	OP_SUBTRACT,
 	OP_MULTIPLY,
 	OP_DIVIDE,
+	OP_NOT,
 	OP_NEGATE,
 	OP_RETURN,
 };
@@ -21,6 +28,7 @@ enum OpCode {
 typedef struct {
 	list_t     code;
 	ValueArray constants;
+	Obj*       objects;
 	list_t     lines;
 } Chunk;
 

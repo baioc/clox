@@ -1,6 +1,48 @@
 #include "value.h"
 
-extern inline void value_print(Value value);
+#include <stdio.h>
+#include <string.h> // memcmp
+
+#include "object.h"
+
+
+extern inline Value bool_value(bool value);
+extern inline Value nil_value(void);
+extern inline Value number_value(double number);
+extern inline Value obj_value(Obj* object);
+extern inline bool value_is_bool(Value value);
+extern inline bool value_is_nil(Value value);
+extern inline bool value_is_number(Value value);
+extern inline bool value_is_obj(Value value);
+extern inline bool value_as_bool(Value value);
+extern inline double value_as_number(Value value);
+extern inline Obj* value_as_obj(Value value);
+
+void value_print(Value value)
+{
+	switch (value.type) {
+		case VAL_BOOL:   printf(value_as_bool(value) ? "true" : "false"); break;
+		case VAL_NIL:    printf("nil"); break;
+		case VAL_NUMBER: printf("%g", value_as_number(value)); break;
+		case VAL_OBJ:    obj_print(value); break;
+	}
+}
+
+bool value_equal(Value a, Value b)
+{
+	if (a.type != b.type) return false;
+	switch (a.type) {
+		case VAL_BOOL:   return value_as_bool(a) == value_as_bool(b);
+		case VAL_NIL:    return true;
+		case VAL_NUMBER: return value_as_number(a) == value_as_number(b);
+		case VAL_OBJ: {
+			const ObjString* a_str = value_as_string(a);
+			const ObjString* b_str = value_as_string(b);
+			return a_str->length == b_str->length
+			    && memcmp(a_str->chars, b_str->chars, a_str->length) == 0;
+		}
+	}
+}
 
 extern inline void value_array_init(ValueArray* array);
 extern inline void value_array_destroy(ValueArray* array);
