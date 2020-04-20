@@ -1,6 +1,10 @@
-#ifndef H_CLOX_COMPILER
-#define H_CLOX_COMPILER
+#ifndef CLOX_COMPILER_H
+#define CLOX_COMPILER_H
 
-void compile(const char* source);
+#include "common.h" // bool
+#include "chunk.h" // Chunk
 
-#endif // H_CLOX_COMPILER
+// Compiles null-terminated SOURCE to a CHUNK. Returns true when successful.
+bool compile(const char* source, Chunk* chunk);
+
+#endif // CLOX_COMPILER_H

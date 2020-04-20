@@ -23,24 +23,10 @@ static bool at_end(const Scanner* scanner)
 	return peek(scanner) == '\0';
 }
 
-static Token make_token(const Scanner* scanner, TokenType type)
-{
-	return (Token){
-		.type = type,
-		.start = scanner->start,
-		.length = scanner->current - scanner->start,
-		.line = scanner->line,
-	};
-}
-
-static Token error_token(const Scanner* scanner, const char* message)
-{
-	return (Token){
-		.type = TOKEN_ERROR,
-		.start = message,
-		.length = strlen(message),
-		.line = scanner->line,
-	};
+// Like peek(), but for one character past the current one.
+static char peek_next(const Scanner* scanner) {
+	if (at_end(scanner)) return '\0';
+	else return scanner->current[1];
 }
 
 // Consume the current character and returns it.
@@ -50,10 +36,15 @@ static char advance(Scanner* scanner)
 	return scanner->current[-1];
 }
 
-// Like peek(), but for one character past the current one.
-static char peek_next(const Scanner* scanner) {
-	if (at_end(scanner)) return '\0';
-	else return scanner->current[1];
+// Conditionally consume current character when it matches an expected value.
+static bool match(Scanner* scanner, char expected)
+{
+	if (at_end(scanner) || peek(scanner) != expected) {
+		return false;
+	} else {
+		scanner->current++;
+		return true;
+	}
 }
 
 // Skips all whitespace and comments until the start of the next token.
@@ -83,17 +74,24 @@ static void skip_whitespace(Scanner* scanner)
 	}
 }
 
-// Conditionally consume current character when it matches an expected value.
-static bool match(Scanner* scanner, char expected)
+static Token make_token(const Scanner* scanner, TokenType type)
 {
-	if (at_end(scanner)) {
-		return false;
-	} else if (*(scanner->current) != expected) {
-		return false;
-	} else {
-		scanner->current++;
-		return true;
-	}
+	return (Token){
+		.type = type,
+		.start = scanner->start,
+		.length = scanner->current - scanner->start,
+		.line = scanner->line,
+	};
+}
+
+static Token error_token(const Scanner* scanner, const char* message)
+{
+	return (Token){
+		.type = TOKEN_ERROR,
+		.start = message,
+		.length = strlen(message),
+		.line = scanner->line,
+	};
 }
 
 static Token scan_string(Scanner* scanner)

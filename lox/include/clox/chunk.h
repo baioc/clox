@@ -3,7 +3,7 @@
 
 #include <sgl/list.h>
 
-#include "common.h" // uint8_t, intptr_t, int8_t
+#include "common.h" // uint8_t, intptr_t
 #include "value.h" // Value, ValueArray
 
 
@@ -47,9 +47,9 @@ int chunk_get_line(const Chunk* chunk, intptr_t offset);
  * Returns the pool index where it was added for later access.
  * @NOTE: Because OP_CONSTANT only uses a single byte for its operand, a
  * constant pool has a maximum capacity of 256 elements.*/
-int8_t chunk_add_constant(Chunk* chunk, Value value);
+int chunk_add_constant(Chunk* chunk, Value value);
 
 // Gets the constant value added to INDEX of the CHUNK's constant pool.
-Value chunk_get_constant(const Chunk* chunk, int8_t index);
+Value chunk_get_constant(const Chunk* chunk, uint8_t index);
 
 #endif // CLOX_CHUNK_H

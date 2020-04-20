@@ -3,9 +3,12 @@
 #include <stdio.h>
 
 #include "value.h" // value_print
-#include "common.h" // DEBUG_TRACE_EXECUTION
-#include "debug.h" // disassemble_instruction
+#include "chunk.h"
 #include "compiler.h"
+#include "common.h" // DEBUG_TRACE_EXECUTION
+#ifdef DEBUG_TRACE_EXECUTION
+#	include "debug.h" // disassemble_instruction
+#endif
 
 
 void vm_init(VM* vm)
@@ -18,7 +21,7 @@ void vm_destroy(VM* vm)
 
 static void stack_push(VM* vm, Value value)
 {
-	*(vm->tos) = value;
+	*vm->tos = value;
 	vm->tos++;
 }
 
@@ -76,6 +79,18 @@ static InterpretResult run(VM* vm)
 
 InterpretResult vm_interpret(VM* vm, const char* source)
 {
-	compile(source);
-	return INTERPRET_OK;
+	Chunk chunk;
+	chunk_init(&chunk);
+
+	if (!compile(source, &chunk)) {
+		chunk_destroy(&chunk);
+		return INTERPRET_COMPILE_ERROR;
+	}
+
+	vm->chunk = &chunk;
+	vm->pc = 0;
+	const InterpretResult result = run(vm);
+
+	chunk_destroy(&chunk);
+	return result;
 }

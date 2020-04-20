@@ -1,5 +1,5 @@
-#ifndef H_CLOX_SCANNER
-#define H_CLOX_SCANNER
+#ifndef CLOX_SCANNER_H
+#define CLOX_SCANNER_H
 
 typedef struct {
 	const char* start;
@@ -58,4 +58,4 @@ void scanner_start(Scanner* scanner, const char* source);
 // Reads the next Token from SCANNER.
 Token scan_token(Scanner* scanner);
 
-#endif // H_CLOX_SCANNER
+#endif // CLOX_SCANNER_H

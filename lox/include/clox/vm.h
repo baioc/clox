@@ -1,5 +1,5 @@
-#ifndef H_CLOX_VM
-#define H_CLOX_VM
+#ifndef CLOX_VM_H
+#define CLOX_VM_H
 
 #include "chunk.h"
 #include "common.h" // intptr_t
@@ -30,4 +30,4 @@ void vm_destroy(VM* vm);
 // Executes VM's main entrypoint using CHUNK.
 InterpretResult vm_interpret(VM* vm, const char* source);
 
-#endif // H_CLOX_VM
+#endif // CLOX_VM_H
