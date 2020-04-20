@@ -21,6 +21,10 @@ add_library(clox
 	src/value.c
 	include/clox/vm.h
 	src/vm.c
+	include/clox/compiler.h
+	src/compiler.c
+	include/clox/scanner.h
+	src/scanner.c
 )
 target_include_directories(clox PUBLIC include/clox)
 target_link_libraries(lox PRIVATE sgl)

@@ -5,6 +5,6 @@
 #include <stddef.h> // size_t, NULL
 #include <stdint.h> // uint8_t, int8_t, intptr_t
 
-// #define DEBUG_TRACE_EXECUTION
+#define DEBUG_TRACE_EXECUTION
 
 #endif // CLOX_COMMON_H

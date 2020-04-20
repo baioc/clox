@@ -36,18 +36,12 @@ int disassemble_instruction(const Chunk* chunk, intptr_t offset)
 	switch (instruction) {
 		case OP_CONSTANT:
 			return constant_instruction("OP_CONSTANT", chunk, offset);
-		case OP_ADD:
-			return simple_instruction("OP_ADD");
-		case OP_SUBTRACT:
-			return simple_instruction("OP_SUBTRACT");
-		case OP_MULTIPLY:
-			return simple_instruction("OP_MULTIPLY");
-		case OP_DIVIDE:
-			return simple_instruction("OP_DIVIDE");
-		case OP_NEGATE:
-			return simple_instruction("OP_NEGATE");
-		case OP_RETURN:
-			return simple_instruction("OP_RETURN");
+		case OP_ADD: return simple_instruction("OP_ADD");
+		case OP_SUBTRACT: return simple_instruction("OP_SUBTRACT");
+		case OP_MULTIPLY: return simple_instruction("OP_MULTIPLY");
+		case OP_DIVIDE: return simple_instruction("OP_DIVIDE");
+		case OP_NEGATE: return simple_instruction("OP_NEGATE");
+		case OP_RETURN: return simple_instruction("OP_RETURN");
 		default:
 			printf("Unknown opcode %d\n", instruction);
 			return 1;

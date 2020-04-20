@@ -28,6 +28,6 @@ void vm_init(VM* vm);
 void vm_destroy(VM* vm);
 
 // Executes VM's main entrypoint using CHUNK.
-InterpretResult vm_interpret(VM* vm, const Chunk* chunk);
+InterpretResult vm_interpret(VM* vm, const char* source);
 
 #endif // H_CLOX_VM

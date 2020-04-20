@@ -5,6 +5,7 @@
 #include "value.h" // value_print
 #include "common.h" // DEBUG_TRACE_EXECUTION
 #include "debug.h" // disassemble_instruction
+#include "compiler.h"
 
 
 void vm_init(VM* vm)
@@ -59,24 +60,12 @@ static InterpretResult run(VM* vm)
 				value_print(stack_pop(vm));
 				printf("\n");
 				return INTERPRET_OK;
-			case OP_ADD:
-				BINARY_OP(+);
-				break;
-			case OP_SUBTRACT:
-				BINARY_OP(-);
-				break;
-			case OP_MULTIPLY:
-				BINARY_OP(*);
-				break;
-			case OP_DIVIDE:
-				BINARY_OP(/);
-				break;
-			case OP_NEGATE:
-				stack_push(vm, -stack_pop(vm));
-				break;
-			case OP_CONSTANT:
-				stack_push(vm, READ_CONSTANT());
-				break;
+			case OP_ADD: BINARY_OP(+); break;
+			case OP_SUBTRACT: BINARY_OP(-); break;
+			case OP_MULTIPLY: BINARY_OP(*); break;
+			case OP_DIVIDE: BINARY_OP(/); break;
+			case OP_NEGATE: stack_push(vm, -stack_pop(vm)); break;
+			case OP_CONSTANT: stack_push(vm, READ_CONSTANT()); break;
 		}
 	}
 
@@ -85,9 +74,8 @@ static InterpretResult run(VM* vm)
 	#undef READ_BYTE
 }
 
-InterpretResult vm_interpret(VM* vm, const Chunk* chunk)
+InterpretResult vm_interpret(VM* vm, const char* source)
 {
-	vm->chunk = chunk;
-	vm->pc = 0;
-	return run(vm);
+	compile(source);
+	return INTERPRET_OK;
 }
