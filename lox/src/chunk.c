@@ -1,11 +1,14 @@
 #include "chunk.h"
 
+#include <assert.h>
 #include <stdlib.h> // bsearch
+
 
 struct line {
 	int      number;
 	intptr_t address;
 };
+
 
 void chunk_init(Chunk* chunk)
 {
@@ -14,9 +17,17 @@ void chunk_init(Chunk* chunk)
 	list_init(&chunk->lines, 0, sizeof(struct line));
 }
 
-extern inline void chunk_destroy(Chunk* chunk);
+void chunk_destroy(Chunk* chunk)
+{
+	list_destroy(&chunk->code);
+	value_array_destroy(&chunk->constants);
+	list_destroy(&chunk->lines);
+}
 
-extern inline long chunk_size(const Chunk* chunk);
+long chunk_size(const Chunk* chunk)
+{
+	return list_size(&chunk->code);
+}
 
 void chunk_write(Chunk* chunk, uint8_t byte, int line)
 {
@@ -33,7 +44,10 @@ void chunk_write(Chunk* chunk, uint8_t byte, int line)
 	}
 }
 
-extern inline uint8_t chunk_get_byte(const Chunk* chunk, intptr_t offset);
+uint8_t chunk_get_byte(const Chunk* chunk, intptr_t offset)
+{
+	return *((uint8_t*)list_ref(&chunk->code, offset));
+}
 
 static int linecmp(const void* a, const void* b)
 {
@@ -49,6 +63,15 @@ int chunk_get_line(const Chunk* chunk, intptr_t offset)
 	return index >= 0 ? ((struct line*)list_ref(lines, index))->number : index;
 }
 
-extern inline int8_t chunk_add_constant(Chunk* chunk, Value value);
+int8_t chunk_add_constant(Chunk* chunk, Value value)
+{
+	const int index = value_array_size(&chunk->constants);
+	assert(index < 255);
+	value_array_write(&chunk->constants, value);
+	return index;
+}
 
-extern inline Value chunk_get_constant(const Chunk* chunk, int8_t index);
+Value chunk_get_constant(const Chunk* chunk, int8_t index)
+{
+	return value_array_get(&chunk->constants, index);
+}

@@ -2,7 +2,7 @@
 
 #include <stdio.h>
 
-#include "common.h" // intptr_t, uint8_t
+#include "common.h" // uint8_t
 #include "value.h" // Value, value_print
 
 
@@ -15,31 +15,39 @@ static int constant_instruction(const char* op, const Chunk* chk, intptr_t addr)
 	return 2;
 }
 
-static int simple_instruction(const char* name, intptr_t offset)
+static int simple_instruction(const char* name)
 {
 	printf("%s\n", name);
 	return 1;
 }
 
-// Prints an instruction OFFSET bytes into CHUNK and returns its size.
-static int disassemble_instruction(const Chunk* chunk, intptr_t offset)
+int disassemble_instruction(const Chunk* chunk, intptr_t offset)
 {
 	// print byte address and line number
 	printf("%04d ", offset);
 	const int line = chunk_get_line(chunk, offset);
-	if (offset > 0 && line == chunk_get_line(chunk, offset - 1)) {
+	if (offset > 0 && line == chunk_get_line(chunk, offset - 1))
 		printf("   | ");
-	} else {
+	else
 		printf("%4d ", line);
-	}
 
 	// switch on instruction print
 	const uint8_t instruction = chunk_get_byte(chunk, offset);
 	switch (instruction) {
 		case OP_CONSTANT:
 			return constant_instruction("OP_CONSTANT", chunk, offset);
+		case OP_ADD:
+			return simple_instruction("OP_ADD");
+		case OP_SUBTRACT:
+			return simple_instruction("OP_SUBTRACT");
+		case OP_MULTIPLY:
+			return simple_instruction("OP_MULTIPLY");
+		case OP_DIVIDE:
+			return simple_instruction("OP_DIVIDE");
+		case OP_NEGATE:
+			return simple_instruction("OP_NEGATE");
 		case OP_RETURN:
-			return simple_instruction("OP_RETURN", offset);
+			return simple_instruction("OP_RETURN");
 		default:
 			printf("Unknown opcode %d\n", instruction);
 			return 1;

@@ -1,8 +1,6 @@
 #ifndef CLOX_CHUNK_H
 #define CLOX_CHUNK_H
 
-#include <assert.h>
-
 #include <sgl/list.h>
 
 #include "common.h" // uint8_t, intptr_t, int8_t
@@ -12,6 +10,11 @@
 // must fit into an uint8_t
 enum OpCode {
 	OP_CONSTANT,
+	OP_ADD,
+	OP_SUBTRACT,
+	OP_MULTIPLY,
+	OP_DIVIDE,
+	OP_NEGATE,
 	OP_RETURN,
 };
 
@@ -26,27 +29,16 @@ typedef struct {
 void chunk_init(Chunk* chunk);
 
 // Deallocates any resources acquired by chunk_init() for CHUNK.
-inline void chunk_destroy(Chunk* chunk)
-{
-	list_destroy(&chunk->code);
-	value_array_destroy(&chunk->constants);
-	list_destroy(&chunk->lines);
-}
+void chunk_destroy(Chunk* chunk);
 
 // Gets the current size of CHUNK.
-inline long chunk_size(const Chunk* chunk)
-{
-	return list_size(&chunk->code);
-}
+long chunk_size(const Chunk* chunk);
 
 // Appends BYTE originated at LINE to CHUNK.
 void chunk_write(Chunk* chunk, uint8_t byte, int line);
 
 // Gets a byte from OFFSET inside the CHUNK.
-inline uint8_t chunk_get_byte(const Chunk* chunk, intptr_t offset)
-{
-	return *((uint8_t*)list_ref(&chunk->code, offset));
-}
+uint8_t chunk_get_byte(const Chunk* chunk, intptr_t offset);
 
 // Gets the line that originated the bytecode at OFFSET inside the CHUNK.
 int chunk_get_line(const Chunk* chunk, intptr_t offset);
@@ -55,18 +47,9 @@ int chunk_get_line(const Chunk* chunk, intptr_t offset);
  * Returns the pool index where it was added for later access.
  * @NOTE: Because OP_CONSTANT only uses a single byte for its operand, a
  * constant pool has a maximum capacity of 256 elements.*/
-inline int8_t chunk_add_constant(Chunk* chunk, Value value)
-{
-	const int index = value_array_size(&chunk->constants);
-	assert(index < 255);
-	value_array_write(&chunk->constants, value);
-	return index;
-}
+int8_t chunk_add_constant(Chunk* chunk, Value value);
 
 // Gets the constant value added to INDEX of the CHUNK's constant pool.
-inline Value chunk_get_constant(const Chunk* chunk, int8_t index)
-{
-	return value_array_get(&chunk->constants, index);
-}
+Value chunk_get_constant(const Chunk* chunk, int8_t index);
 
 #endif // CLOX_CHUNK_H
