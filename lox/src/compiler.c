@@ -262,9 +262,9 @@ static void literal(Parser* parser)
 
 static void string(Parser* parser)
 {
-	const ObjString* str = obj_string_copy(&current_chunk(parser)->objects,
-	                                       parser->previous.start + 1,
-	                                       parser->previous.length - 2);
+	const ObjString* str = make_obj_string_copy(&current_chunk(parser)->objects,
+	                                            parser->previous.start + 1,
+	                                            parser->previous.length - 2);
 	emit_constant(parser, obj_value((Obj*)str));
 }
 

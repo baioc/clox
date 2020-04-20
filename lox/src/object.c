@@ -17,7 +17,7 @@ extern inline char* value_as_c_str(Value value);
 void obj_print(Value value)
 {
 	switch (obj_type(value)) {
-		case OBJ_STRING: printf("%s", value_as_c_str(value)); break;
+		case OBJ_STRING: printf("\"%s\"", value_as_c_str(value)); break;
 	}
 }
 
@@ -25,7 +25,7 @@ static Obj* allocate_obj(Obj** objects, size_t size, ObjType type)
 {
 	Obj* obj = malloc(size);
 #ifdef DEBUG_DYNAMIC_MEMORY
-	printf(";;; Allocating object of type %d at %p\n", type, obj);
+	printf(";;; Allocating object %d (%u bytes) at %p\n", type, size, obj);
 #endif
 
 	obj->type = type;
@@ -36,28 +36,18 @@ static Obj* allocate_obj(Obj** objects, size_t size, ObjType type)
 	return obj;
 }
 
-static ObjString* allocate_string(Obj** objects, char* chars, int length)
+ObjString* make_obj_string(Obj** objects, int length)
 {
-	ObjString* string = (ObjString*)allocate_obj(objects,
-	                                             sizeof(ObjString),
-	                                             OBJ_STRING);
+	const size_t size = sizeof(ObjString) + length + 1;
+	ObjString* string = (ObjString*)allocate_obj(objects, size, OBJ_STRING);
 	string->length = length;
-	string->chars = chars;
 	return string;
 }
 
-ObjString* obj_string_copy(Obj** objects, const char* chars, int length)
+ObjString* make_obj_string_copy(Obj** objects, const char* c_str, int length)
 {
-	char* heap_chars = malloc(sizeof(char) * length + 1);
-	memcpy(heap_chars, chars, length);
-	heap_chars[length] = '\0';
-#ifdef DEBUG_DYNAMIC_MEMORY
-	printf(";;; Allocating string \"%s\" at %p\n", heap_chars, heap_chars);
-#endif
-	return allocate_string(objects, heap_chars, length);
-}
-
-ObjString* obj_string_take(Obj** objects, char* str, int length)
-{
-	return allocate_string(objects, str, length);
+	ObjString* string = make_obj_string(objects, length);
+	memcpy(string->chars, c_str, length);
+	string->chars[length] = '\0';
+	return string;
 }

@@ -62,15 +62,11 @@ static void concatenate_strings(VM* vm)
 
 	// @TODO: optimize concatenation of immutable strings
 	const int length = a->length + b->length;
-	char* chars = malloc(sizeof(char) * (length + 1));
-	memcpy(chars, a->chars, a->length);
-	memcpy(chars + a->length, b->chars, b->length);
-	chars[length] = '\0';
-#ifdef DEBUG_DYNAMIC_MEMORY
-	printf(";;; Allocating string \"%s\" at %p\n", chars, chars);
-#endif
+	ObjString* result = make_obj_string(&vm->objects, length);
+	memcpy(result->chars, a->chars, a->length);
+	memcpy(result->chars + a->length, b->chars, b->length);
+	result->chars[length] = '\0';
 
-	const ObjString* result = obj_string_take(&vm->objects, chars, length);
 	stack_push(vm, obj_value((Obj*)result));
 }
 

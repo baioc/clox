@@ -55,14 +55,14 @@ static char* read_file(const char* path)
 }
 
 static int run_file(const char* filename) {
-	char* source = read_file(filename);
 	VM vm;
 	vm_init(&vm);
+	char* source = read_file(filename);
 
 	const InterpretResult result = vm_interpret(&vm, source);
 
-	vm_destroy(&vm);
 	free(source);
+	vm_destroy(&vm);
 
 	if (result == INTERPRET_COMPILE_ERROR) return EX_DATAERR;
 	if (result == INTERPRET_RUNTIME_ERROR) return EX_SOFTWARE;

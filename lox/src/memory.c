@@ -12,17 +12,11 @@ static void free_obj(Obj* object)
 	switch (object->type) {
 		case OBJ_STRING: {
 			ObjString* string = (ObjString*)object;
-
 		#ifdef DEBUG_DYNAMIC_MEMORY
-			printf(";;; Freeing string \"%s\" at %p\n", string->chars, string->chars);
-		#endif
-			free(string->chars);
-
-		#ifdef DEBUG_DYNAMIC_MEMORY
-			printf(";;; Freeing object of type %d at %p\n", object->type, string);
+			printf(";;; Freeing object %d (%u bytes) at %p\n",
+			       OBJ_STRING, sizeof(ObjString) + string->length + 1, string);
 		#endif
 			free(string);
-
 			break;
 		}
 	}

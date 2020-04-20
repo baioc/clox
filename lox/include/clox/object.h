@@ -18,7 +18,7 @@ struct Obj {
 struct ObjString {
 	struct Obj obj; // type punning ("struct inheritance") enabler
 	int    length;
-	char*  chars;
+	char   chars[]; // flexible array
 };
 
 
@@ -49,8 +49,8 @@ inline char* value_as_c_str(Value value)
 
 void obj_print(Value value);
 
-ObjString* obj_string_copy(Obj** objects, const char* str, int length);
+ObjString* make_obj_string(Obj** objects, int length);
 
-ObjString* obj_string_take(Obj** objects, char* str, int length);
+ObjString* make_obj_string_copy(Obj** objects, const char* c_str, int length);
 
 #endif // CLOX_OBJECT_H
