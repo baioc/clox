@@ -3,9 +3,6 @@
 
 #include <sgl/list.h>
 
-#include "common.h" // bool
-
-
 typedef struct Obj Obj;
 typedef struct ObjString ObjString;
 
@@ -26,7 +23,6 @@ typedef struct {
 } Value;
 
 typedef list_t ValueArray;
-
 
 inline Value bool_value(bool value)
 {
@@ -90,7 +86,7 @@ bool value_equal(Value a, Value b);
 // Initializes an empty ARRAY. value_array_destroy() must be called on it later.
 inline void value_array_init(ValueArray* array)
 {
-	list_init(array, 0, sizeof(Value));
+	list_init(array, 0, sizeof(Value), NULL);
 }
 
 // Deallocates any resources acquired by value_array_init() on ARRAY.

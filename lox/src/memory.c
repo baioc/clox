@@ -1,11 +1,14 @@
 #include "memory.h"
 
+#include <stdlib.h> // free
+
 #include "object.h" // ObjType
 #include "value.h" // ObjString
 #include "common.h" // DEBUG_DYNAMIC_MEMORY
 #ifdef DEBUG_DYNAMIC_MEMORY
 #	include <stdio.h>
 #endif
+
 
 static void free_obj(Obj* object)
 {

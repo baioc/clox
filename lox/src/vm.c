@@ -10,7 +10,7 @@
 #include "object.h"
 #include "chunk.h"
 #include "compiler.h"
-#include "common.h" // DEBUG_TRACE_EXECUTION, DEBUG_DYNAMIC_MEMORY
+#include "common.h" // DEBUG_TRACE_EXECUTION
 #ifdef DEBUG_TRACE_EXECUTION
 #	include "debug.h" // disassemble_instruction
 #endif

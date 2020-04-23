@@ -1,14 +1,17 @@
 #include <sgl/list.h>
 
 #include <assert.h>
-#include <string.h> // strdup
+#include <stdlib.h> // realloc, malloc, free, rand
+#include <string.h> // memcpy, strcmp
 
-#include <sgl/core.h> // ARRAY_SIZE, freeref, bool
+#include <sgl/core.h> // ARRAY_SIZE
 
 
-static int intcmp(const int* a, const int* b)
+static void freeref(index_t idx, void* p, void* ignored)
 {
-	return *a - *b;
+	void** ptr = (void**)p;
+	free(*ptr);
+	*ptr = NULL;
 }
 
 static void list_primitives(void)
@@ -18,7 +21,7 @@ static void list_primitives(void)
 	list_t numbers;
 
 	// initially, size should be 0
-	int err = list_init(&numbers, 0, sizeof(int));
+	int err = list_init(&numbers, 0, sizeof(int), NULL);
 	assert(!err);
 	assert(list_size(&numbers) == 0);
 
@@ -30,14 +33,6 @@ static void list_primitives(void)
 
 	// size should be the number of numbers
 	assert(list_size(&numbers) == n);
-
-	// test bsearch
-	int x = 6;
-	int found = list_bsearch(&numbers, &x, (int (*)(const void*, const void*))intcmp);
-	assert(found == 4);
-	x = -11;
-	found = list_bsearch(&numbers, &x, (int (*)(const void*, const void*))intcmp);
-	assert(found < 0);
 
 	// check if the list's front is the expected value, then pop it
 	for (int i = 0; i < n; ++i) {
@@ -59,19 +54,22 @@ static void list_pointers(void)
 	list_t names;
 
 	// initially, size should be 0
-	int err = list_init(&names, 3, sizeof(char*));
+	int err = list_init(&names, 3, sizeof(char*), realloc);
 	assert(!err);
 	assert(list_size(&names) == 0);
 
 	// only the pointers are inserted into the list
 	for (int i = 0; i < n; ++i) {
-		const char* copy = strdup(array[i]); // must be freed
+		const size_t size = strlen(array[i]) + 1;
+		char* copy = malloc(sizeof(char) * size); // must be freed
+		assert(copy != NULL);
+		memcpy(copy, array[i], size);
 		err = list_append(&names, &copy);
 		assert(!err);
 	}
 
 	// frees each pointer (they are still on the list)
-	list_for_each(&names, (void (*)(void*))freeref);
+	list_for_each(&names, freeref, NULL);
 	assert(list_size(&names) == n);
 
 	// check if for_each did the right thing
@@ -83,77 +81,55 @@ static void list_pointers(void)
 	list_destroy(&names);
 }
 
-// Checks if string has a balanced sequence of brackets <(), [], {}>.
-bool balanced(const char* string)
+static int strrefcmp(const void *a, const void *b)
 {
-	list_t stack;
-	list_init(&stack, 0, sizeof(char));
-
-	const size_t length = strlen(string);
-	for (int i = 0; i < length; ++i) {
-		const char c = string[i];
-
-		// if opening, push it on top of the stack
-		if (c == '(' || c == '[' || c == '{') {
-			list_append(&stack, &c);
-		}
-		// if closing, the top of the stack must be the opening
-		else if (c == ')' || c == ']' || c == '}') {
-			if (list_empty(&stack)) {
-				goto FAIL;
-			}
-			else {
-				char last_open;
-				list_pop(&stack, &last_open);
-
-				if (   (last_open == '(' && c != ')')
-				    || (last_open == '[' && c != ']')
-				    || (last_open == '{' && c != '}')
-				   ) {
-					goto FAIL;
-				}
-			}
-		}
-	}
-
-	// success when all brackets were closed
-	if (list_empty(&stack)) {
-		list_destroy(&stack);
-		return true;
-	}
-
-	FAIL: list_destroy(&stack);
-	return false;
+	const char *str1 = *(const char **)a;
+	const char *str2 = *(const char **)b;
+	return strcmp(str1, str2);
 }
 
-static void list_stack(void)
+static void list_sorting(void)
 {
-	const char* parens[] = {
-		"(foo)",
-		"ab)ba",
-		"0(1[2[3]2]1{2[3]2}1{2(3)2}1)0",
-		"(this[is)(a)(test])({braclets}{must)(match})",
-		"[[ignore](other){stuff]((...)",
-	};
+	const char *array[] = {"Gb", "Ab", "F#", "B", "D"};
+	list_t notes;
+	err_t err = list_init(&notes, 0, sizeof(char*), NULL);
+	assert(!err);
 
-	const bool answers[] = {
-		true,
-		false,
-		true,
-		false,
-		false,
-	};
+	// testing list_insert_sorted
+	for (int i = 0; i < ARRAY_SIZE(array); ++i) {
+		const index_t idx = list_insert_sorted(&notes, &array[i], strrefcmp);
+		assert(idx >= 0);
+	}
+	assert(list_sorted(&notes, strrefcmp));
 
-	assert(ARRAY_SIZE(parens) == ARRAY_SIZE(answers));
+	// test bsearch
+	char* note = "B";
+	index_t found = list_search(&notes, &note, strrefcmp);
+	assert(found == 1);
+	assert(strcmp(*(char**)list_ref(&notes, found), note) == 0);
+	list_remove(&notes, found, &note);
+	found = list_search(&notes, &note, strrefcmp);
+	assert(found < 0);
+	assert(list_sorted(&notes, strrefcmp));
 
-	for (int i = 0; i < ARRAY_SIZE(parens); ++i)
-		assert(balanced(parens[i]) == answers[i]);
+	// test list_swap by doing a Fisher-Yates-Knuth in-place shuffle
+	const int length = list_size(&notes);
+	for (int i = length - 1; i > 0; --i) {
+		const int j = rand() % (i + 1);
+		if (j == i) continue;
+		list_swap(&notes, i, j);
+	}
+	assert(!list_sorted(&notes, strrefcmp));
+
+	// test list_sort
+	list_sort(&notes, strrefcmp);
+	assert(list_sorted(&notes, strrefcmp));
 }
 
 int main(int argc, const char* argv[])
 {
 	list_primitives();
 	list_pointers();
-	list_stack();
+	list_sorting();
 	return 0;
 }

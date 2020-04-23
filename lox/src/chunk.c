@@ -1,7 +1,5 @@
 #include "chunk.h"
 
-#include <stdlib.h> // bsearch
-
 #include "memory.h" // free_objects
 
 
@@ -13,10 +11,10 @@ struct line {
 
 void chunk_init(Chunk* chunk)
 {
-	list_init(&chunk->code, 0, sizeof(uint8_t));
+	list_init(&chunk->code, 0, sizeof(uint8_t), NULL);
 	value_array_init(&chunk->constants);
 	chunk->objects = NULL;
-	list_init(&chunk->lines, 0, sizeof(struct line));
+	list_init(&chunk->lines, 0, sizeof(struct line), NULL);
 }
 
 void chunk_destroy(Chunk* chunk)
@@ -59,10 +57,10 @@ static int linecmp(const void* a, const void* b)
 
 int chunk_get_line(const Chunk* chunk, intptr_t offset)
 {
-	// @NOTE: uses bsearch supposing lines are always written sequentially
+	// @NOTE: uses ordered search supposing lines are always sequential
 	const list_t* lines = &chunk->lines;
 	const struct line key = { .address = offset };
-	const long index = list_bsearch(lines, &key, linecmp);
+	const long index = list_search(lines, &key, linecmp);
 	return index >= 0 ? ((struct line*)list_ref(lines, index))->number : index;
 }
 
