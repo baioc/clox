@@ -7,13 +7,6 @@
 #include <sgl/core.h> // ARRAY_SIZE
 
 
-static void freeref(index_t idx, void* p, void* ignored)
-{
-	void** ptr = (void**)p;
-	free(*ptr);
-	*ptr = NULL;
-}
-
 static void list_primitives(void)
 {
 	const int array[] = {-6, 0, 2, 3, 6, 7, 11};
@@ -68,15 +61,13 @@ static void list_pointers(void)
 		assert(!err);
 	}
 
-	// frees each pointer (they are still on the list)
-	list_for_each(&names, freeref, NULL);
-	assert(list_size(&names) == n);
-
 	// check if for_each did the right thing
+	// frees each pointer (they are still on the list)
 	for (int i = 0; i < n; ++i) {
-		const char* str = *((char**)list_ref(&names, i));
-		assert(str == NULL);
+		char* str = *((char**)list_ref(&names, i));
+		free(str);
 	}
+	assert(list_size(&names) == n);
 
 	list_destroy(&names);
 }

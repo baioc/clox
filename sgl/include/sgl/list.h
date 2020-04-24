@@ -3,6 +3,7 @@
 
 #include "core.h"
 
+// Dynamic array with contiguous storage, constant access and amortized insert.
 typedef struct {
 	index_t        length;
 	index_t        capacity;
@@ -51,15 +52,6 @@ inline void list_pop(list_t* list, void* sink)
 	list_remove(list, list_size(list) - 1, sink);
 }
 
-// Calls FUNC on each pair (index, element) of LIST with extra arg FORWARD.
-inline void list_for_each(list_t* list, void (*func)(index_t, void*, void*),
-                          void* forward)
-{
-	const index_t length = list_size(list);
-	for (index_t i = 0; i < length; ++i)
-		func(i, list_ref(list, i), forward);
-}
-
 // Swaps elements in indexes A and B of LIST.
 void list_swap(list_t* list, index_t a, index_t b);
 
@@ -80,14 +72,6 @@ index_t list_insert_sorted(list_t* sorted_list, const void* element,
 void list_sort(list_t* list, int (*compare)(const void*, const void*));
 
 // Checks if LIST is sorted (ascending order) through the COMPARE function.
-inline bool list_sorted(const list_t* list, compare_fn_t compare)
-{
-	const index_t length = list_size(list);
-	for (index_t i = 1; i < length; ++i) {
-		if (compare(list_ref(list, i - 1), list_ref(list, i)) > 0)
-			return false;
-	}
-	return true;
-}
+bool list_sorted(const list_t* list, compare_fn_t compare);
 
 #endif // SGL_LIST_H

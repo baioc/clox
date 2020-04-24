@@ -2,7 +2,7 @@
 
 #include <assert.h>
 #include <string.h> // strcmp, memcpy
-#include <stdlib.h> // rand, malloc
+#include <stdlib.h> // rand, malloc, free, NULL
 #include <errno.h>
 
 #include <sgl/core.h> // ARRAY_SIZE
@@ -21,6 +21,16 @@ static hash_t strhash(const void* ptr, size_t bytes)
 	const char* str = *(const char**)ptr;
 	const size_t n = strlen(str);  // bytes is actualy sizeof(char*)
 	return fnv_1a(str, n);
+}
+
+static int test_each(const void* key, void* value, void* arr)
+{
+	const char* number = *(char**)key;
+	const int digit = *(int*)value;
+	const char** num_array = (const char**)arr;
+	const int diff = strcmp(number, num_array[digit]);
+	assert(!diff);
+	return diff;
 }
 
 int main(int argc, const char* argv[])
@@ -57,7 +67,7 @@ int main(int argc, const char* argv[])
 	assert(map_size(&dict) == n - 1);
 	assert(map_get(&dict, &numbers[del]) == NULL);
 
-	// for all other entries, compare with original array
+	// for all other entries, check if value matches
 	for (int i = 0; i < n; ++i) {
 		if (i == del) continue;
 		int* numeral = map_get(&dict, &numbers[i]);
@@ -68,6 +78,10 @@ int main(int argc, const char* argv[])
 	// try deleting the same entry
 	err = map_delete(&dict, &numbers[del]);
 	assert(err == ENOKEY);
+
+	// do the same equality test, but with map_for_each
+	err = map_for_each(&dict, test_each, numbers);
+	assert(!err);
 
 	// deallocate map
 	map_destroy(&dict);

@@ -61,7 +61,7 @@ err_t list_append(list_t* list, const void* element)
 	}
 
 	// append copy to the end of the list
-	byte_t * const end = list_ref(list, list->length);
+	byte_t* end = list_ref(list, list->length);
 	memcpy(end, element, list->elem_size);
 	list->length++;
 
@@ -95,7 +95,7 @@ void list_remove(list_t* list, index_t index, void* sink)
 	assert(index < list->length);
 
 	// send copy to output
-	byte_t * const source = list_ref(list, index);
+	const byte_t* source = list_ref(list, index);
 	memcpy(sink, source, list->elem_size);
 	list->length--;
 
@@ -106,10 +106,7 @@ void list_remove(list_t* list, index_t index, void* sink)
 
 extern inline void list_pop(list_t* list, void* sink);
 
-typedef void (*for_each_fn)(index_t, void*, void*);
-extern inline void list_for_each(list_t* list, for_each_fn func, void* forward);
-
-index_t list_search(const list_t* lst, const void* key, compare_fn_t cmp)
+inline index_t list_search(const list_t* lst, const void* key, compare_fn_t cmp)
 {
 	const byte_t* p = bsearch(key, lst->data, lst->length, lst->elem_size, cmp);
 	return p == NULL ? -1 : (p - lst->data) / lst->elem_size;
@@ -124,17 +121,25 @@ index_t list_insert_sorted(list_t* list, const void* src, compare_fn_t compare)
 	// swap backwards until inserted in the correct position
 	index_t i;
 	for (i = list->length - 1; i > 0; --i) {
-		void * const curr = list_ref(list, i);
-		void * const prev = curr - list->elem_size;
+		void* curr = list_ref(list, i);
+		void* prev = list_ref(list, i - 1);
 		if (compare(prev, curr) < 0) break; // stop when prev < curr
 		swap(prev, curr, list->elem_size);
 	}
 	return i;
 }
 
-void list_sort(list_t* list, compare_fn_t compare)
+inline void list_sort(list_t* list, compare_fn_t compare)
 {
 	qsort(list->data, list->length, list->elem_size, compare);
 }
 
-extern inline bool list_sorted(const list_t* list, compare_fn_t compare);
+bool list_sorted(const list_t* list, compare_fn_t compare)
+{
+	for (index_t i = 1; i < list->length; ++i) {
+		const void* curr = list_ref(list, i);
+		const void* prev = list_ref(list, i - 1);
+		if (compare(prev, curr) > 0) return false;
+	}
+	return true;
+}

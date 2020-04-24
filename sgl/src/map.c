@@ -18,12 +18,6 @@ struct map_entry {
 };
 
 
-static void clear_entry(index_t k, void* entry, void* unused)
-{
-	((struct map_entry*)entry)->in_use = false;
-	((struct map_entry*)entry)->undead = false;
-}
-
 err_t map_init(map_t* map,
                index_t n,
                size_t key_size,
@@ -37,11 +31,17 @@ err_t map_init(map_t* map,
 	assert(value_size >= 0);
 	assert(key_cmp != NULL);
 
-	n /= MAP_MAX_LOAD; // adjust capacity by load factor
+	n /= MAP_MAX_LOAD; // adjust initial capacity by load factor
 	const size_t entry_size = sizeof(struct map_entry) + key_size + value_size;
 	const err_t err = list_init(&map->buckets, n, entry_size, alloc);
 	if (err) return err;
-	list_for_each(&map->buckets, clear_entry, NULL);
+
+	// clear entries
+	for (index_t i = 0; i < n; ++i) {
+		struct map_entry* entry = list_ref(&map->buckets, i);
+		entry->in_use = false;
+		entry->undead = false;
+	}
 
 	map->count = 0;
 	map->key_size = key_size;
@@ -92,7 +92,7 @@ static struct map_entry* find_entry(const map_t* map,
 
 void* map_get(const map_t* map, const void* key)
 {
-	if (map_empty(map)) return NULL;
+	if (map->count <= 0) return NULL;
 	struct map_entry* entry = find_entry(map, &map->buckets, key);
 	return entry->in_use ? entry->key_value + map->key_size : NULL;
 }
@@ -104,13 +104,17 @@ static err_t rehash_table(map_t* map, index_t capacity)
 	const err_t err = list_init(&new_buckets, capacity,
 	                            map->buckets.elem_size, map->buckets.allocator);
 	if (err) return err;
-	list_for_each(&new_buckets, clear_entry, NULL);
+
+	// clear new entries
+	for (index_t i = 0; i < capacity; ++i) {
+		struct map_entry* entry = list_ref(&new_buckets, i);
+		entry->in_use = false;
+		entry->undead = false;
+	}
 
 	// copy every old entry to a newly-computed place in the rehashed table
-	byte_t* current = map->buckets.data;
 	for (index_t i = 0; i < map->buckets.capacity; ++i) {
-		struct map_entry* src = (struct map_entry*)current;
-		current += map->buckets.elem_size;
+		struct map_entry* src = list_ref(&map->buckets, i);
 		if (!src->in_use) continue;
 		struct map_entry* dest = find_entry(map, &new_buckets, src->key_value);
 		memcpy(dest, src, map->buckets.elem_size);
@@ -164,4 +168,17 @@ err_t map_delete(map_t* map, const void* key)
 	map->count--;
 
 	return 0;
+}
+
+err_t map_for_each(const map_t* map, err_t (*func)(const void*, void*, void*),
+                   void* forward)
+{
+	err_t err = 0;
+	for (index_t i = 0; i < map->buckets.capacity; ++i) {
+		struct map_entry* entry = list_ref(&map->buckets, i);
+		if (!entry->in_use) continue;
+		err = func(entry->key_value, entry->key_value + map->key_size, forward);
+		if (err) break;
+	}
+	return err;
 }

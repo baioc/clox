@@ -3,8 +3,9 @@
 
 #include "core.h"
 #include "list.h"
-#include "hash.h"
+#include "hash.h" // hash_fn_t
 
+// Generic hash table with constant amortized access, insertions and deletes.
 typedef struct {
 	list_t       buckets;
 	index_t      count;
@@ -48,5 +49,13 @@ err_t map_put(map_t* map, const void* key, const void* value);
 
 // Deletes KEY's entry from MAP. Returns 0 on success and ENOKEY otherwise.
 err_t map_delete(map_t* map, const void* key);
+
+/** Iterates (in unspecified order) through all entries in MAP, calling FUNC on
+ * each one with an extra forwarded argument, eg: FUNC(k, v, FORWARD).
+ *
+ * The iteration will be halted in case FUNC returns a non-zero value, which
+ * will be then returned by this function. Returns 0 otherwise. */
+err_t map_for_each(const map_t* map, err_t (*func)(const void*, void*, void*),
+                   void* forward);
 
 #endif // SGL_MAP_H
