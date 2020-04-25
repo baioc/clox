@@ -1,6 +1,8 @@
 #include "chunk.h"
 
-#include "memory.h" // free_objects
+#include <sgl/list.h>
+
+#include "value.h"
 
 
 struct line {
@@ -12,16 +14,14 @@ struct line {
 void chunk_init(Chunk* chunk)
 {
 	list_init(&chunk->code, 0, sizeof(uint8_t), NULL);
-	value_array_init(&chunk->constants);
-	chunk->objects = NULL;
 	list_init(&chunk->lines, 0, sizeof(struct line), NULL);
+	value_array_init(&chunk->constants);
 }
 
 void chunk_destroy(Chunk* chunk)
 {
-	list_destroy(&chunk->lines);
-	free_objects(&chunk->objects);
 	value_array_destroy(&chunk->constants);
+	list_destroy(&chunk->lines);
 	list_destroy(&chunk->code);
 }
 

@@ -2,12 +2,12 @@
 
 #include <stdio.h> // fprintf
 #include <stdlib.h> // strtod
-#include <assert.h>
 
-#include "scanner.h" // Scanner, Token
-#include "chunk.h" // opcodes
+#include "scanner.h"
+#include "chunk.h"
 #include "value.h"
-#include "object.h" // obj_string_copy
+#include "object.h"
+#include "table.h"
 #include "common.h" // uint8_t, DEBUG_PRINT_CODE
 #ifdef DEBUG_PRINT_CODE
 #	include "debug.h" // disassemble_chunk
@@ -15,12 +15,14 @@
 
 
 typedef struct {
+	Scanner scanner;
 	Token   current;
 	Token   previous;
 	bool    error;
 	bool    panic;
-	Scanner scanner;
 	Chunk*  chunk;
+	Obj**   objects;
+	Table*  strings;
 } Parser;
 
 typedef enum {
@@ -44,6 +46,7 @@ typedef struct {
 } ParseRule;
 
 
+// forward decls.
 static void grouping(Parser* parser);
 static void number(Parser* parser);
 static void unary(Parser* parser);
@@ -51,7 +54,7 @@ static void binary(Parser* parser);
 static void literal(Parser* parser);
 static void string(Parser* parser);
 
-ParseRule rules[] = {
+static ParseRule rules[] = {
 	[TOKEN_LEFT_PAREN]    = { grouping, NULL,   PREC_NONE },
 	[TOKEN_RIGHT_PAREN]   = { NULL,     NULL,   PREC_NONE },
 	[TOKEN_LEFT_BRACE]    = { NULL,     NULL,   PREC_NONE },
@@ -100,14 +103,9 @@ static ParseRule* get_rule(TokenType type)
 }
 
 
-static Chunk* current_chunk(const Parser* parser)
-{
-	return parser->chunk;
-}
-
 static void emit_byte(Parser* parser, uint8_t byte)
 {
-	chunk_write(current_chunk(parser), byte, parser->previous.line);
+	chunk_write(parser->chunk, byte, parser->previous.line);
 }
 
 static void emit_bytes(Parser* parser, uint8_t byte1, uint8_t byte2)
@@ -186,7 +184,7 @@ static void expression(Parser* parser)
 
 static uint8_t make_constant(Parser* parser, Value value)
 {
-	const unsigned constant_idx = chunk_add_constant(current_chunk(parser), value);
+	unsigned constant_idx = chunk_add_constant(parser->chunk, value);
 	if (constant_idx > UINT8_MAX) {
 		error(parser, "Too many constants in one chunk.");
 		return 0;
@@ -222,7 +220,6 @@ static void unary(Parser* parser)
 	switch (operator_type) {
 		case TOKEN_BANG: emit_byte(parser, OP_NOT); break;
 		case TOKEN_MINUS: emit_byte(parser, OP_NEGATE); break;
-		default: assert(false); // unreachable
 	}
 }
 
@@ -242,11 +239,10 @@ static void binary(Parser* parser)
 		case TOKEN_GREATER_EQUAL: emit_bytes(parser, OP_LESS, OP_NOT); break;
 		case TOKEN_LESS:          emit_byte(parser, OP_LESS); break;
 		case TOKEN_LESS_EQUAL:    emit_bytes(parser, OP_GREATER, OP_NOT); break;
-		case TOKEN_PLUS:  emit_byte(parser, OP_ADD); break;
-		case TOKEN_MINUS: emit_byte(parser, OP_SUBTRACT); break;
-		case TOKEN_STAR:  emit_byte(parser, OP_MULTIPLY); break;
-		case TOKEN_SLASH: emit_byte(parser, OP_DIVIDE); break;
-		default: assert(false); // unreachable
+		case TOKEN_PLUS:          emit_byte(parser, OP_ADD); break;
+		case TOKEN_MINUS:         emit_byte(parser, OP_SUBTRACT); break;
+		case TOKEN_STAR:          emit_byte(parser, OP_MULTIPLY); break;
+		case TOKEN_SLASH:         emit_byte(parser, OP_DIVIDE); break;
 	}
 }
 
@@ -256,15 +252,14 @@ static void literal(Parser* parser)
 		case TOKEN_FALSE: emit_byte(parser, OP_FALSE); break;
 		case TOKEN_NIL: emit_byte(parser, OP_NIL); break;
 		case TOKEN_TRUE: emit_byte(parser, OP_TRUE); break;
-		default: assert(false); // unreachable
 	}
 }
 
 static void string(Parser* parser)
 {
-	const ObjString* str = make_obj_string_copy(&current_chunk(parser)->objects,
-	                                            parser->previous.start + 1,
-	                                            parser->previous.length - 2);
+	const ObjString* str = make_obj_string(parser->objects, parser->strings,
+	                                       parser->previous.start + 1,
+	                                       parser->previous.length - 2);
 	emit_constant(parser, obj_value((Obj*)str));
 }
 
@@ -282,16 +277,18 @@ static void debug_print_compiled(const Parser* parser)
 {
 #ifdef DEBUG_PRINT_CODE
 	if (!parser->error)
-		disassemble_chunk(current_chunk(parser), "code");
+		disassemble_chunk(parser->chunk, "code");
 #endif
 }
 
-bool compile(const char* source, Chunk* chunk)
+bool compile(const char* source, Chunk* chunk, Obj** objects, Table* strings)
 {
 	Parser parser = {
 		.chunk = chunk,
 		.error = false,
 		.panic = false,
+		.objects = objects,
+		.strings = strings,
 	};
 	scanner_start(&parser.scanner, source);
 

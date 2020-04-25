@@ -1,24 +1,28 @@
 #ifndef CLOX_OBJECT_H
 #define CLOX_OBJECT_H
 
+#include <sgl/hash.h>
+
 #include "value.h"
 #include "common.h" // bool
-#include "vm.h"
+#include "table.h"
 
 
+// Possible Obj types.
 typedef enum {
 	OBJ_STRING,
 } ObjType;
 
 struct Obj {
-	ObjType type;
-	struct  Obj* next;
+	ObjType     type;
+	struct Obj* next;
 };
 
 struct ObjString {
 	struct Obj obj; // type punning ("struct inheritance") enabler
-	int    length;
-	char   chars[]; // flexible array
+	hash_t     hash;
+	size_t     length;
+	char*      chars;
 };
 
 
@@ -49,8 +53,15 @@ inline char* value_as_c_str(Value value)
 
 void obj_print(Value value);
 
-ObjString* make_obj_string(Obj** objects, int length);
+// Deallocates all Objs in the OBJECTS linked list.
+void free_objects(Obj** objects);
 
-ObjString* make_obj_string_copy(Obj** objects, const char* c_str, int length);
+// Allocates a new ObjString while copying given STR.
+ObjString* make_obj_string(Obj** objects, Table* strings,
+                           const char* str, size_t str_len);
+
+// Allocates a new ObjString which is the concatenation of PREFIX and SUFFIX.
+ObjString* obj_string_concat(Obj** objects, Table* strings,
+                             const ObjString* prefix, const ObjString* sufix);
 
 #endif // CLOX_OBJECT_H

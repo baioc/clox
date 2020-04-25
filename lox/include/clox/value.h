@@ -3,9 +3,13 @@
 
 #include <sgl/list.h>
 
+#include "common.h" // bool"
+
+// Forward declaration due to cyclic dependencies.
 typedef struct Obj Obj;
 typedef struct ObjString ObjString;
 
+// Valid Value types.
 typedef enum {
 	VAL_BOOL,
 	VAL_NIL,
@@ -13,6 +17,7 @@ typedef enum {
 	VAL_OBJ,
 } ValueType;
 
+// Tagged union for Lox values.
 typedef struct {
 	ValueType type;
 	union {
@@ -23,6 +28,7 @@ typedef struct {
 } Value;
 
 typedef list_t ValueArray;
+
 
 inline Value bool_value(bool value)
 {

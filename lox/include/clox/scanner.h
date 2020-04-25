@@ -1,12 +1,14 @@
 #ifndef CLOX_SCANNER_H
 #define CLOX_SCANNER_H
 
+// Lazy Lox tokenizer.
 typedef struct {
 	const char* start;
 	const char* current;
 	int         line;
 } Scanner;
 
+// Enumeration of valid Lox tokens, plus some extra signaling tokens.
 typedef enum {
 	// Single-character tokens.
 	TOKEN_LEFT_PAREN, TOKEN_RIGHT_PAREN,
@@ -45,7 +47,8 @@ typedef enum {
 	TOKEN_EOF,
 } TokenType;
 
-typedef struct {
+// A simple token structure.
+typedef struct Token {
 	TokenType   type;
 	const char* start;
 	int         length;

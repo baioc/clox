@@ -4,10 +4,10 @@
 #include <sgl/list.h>
 
 #include "common.h" // uint8_t, intptr_t
-#include "value.h" // Value, ValueArray, Obj
+#include "value.h" // Value, ValueArray
 
 
-// must fit into an uint8_t
+// Lox VM opcodes, which must must fit into an uint8_t.
 enum OpCode {
 	OP_CONSTANT,
 	OP_NIL,
@@ -25,11 +25,11 @@ enum OpCode {
 	OP_RETURN,
 };
 
+// A chunk of VM-executable, compiled bytecode.
 typedef struct {
 	list_t     code;
-	ValueArray constants;
-	Obj*       objects;
 	list_t     lines;
+	ValueArray constants;
 } Chunk;
 
 

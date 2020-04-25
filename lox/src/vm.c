@@ -2,15 +2,13 @@
 
 #include <stdio.h>
 #include <stdarg.h>
-#include <stdlib.h> // malloc
-#include <string.h> // memcpy
 
-#include "value.h"
-#include "memory.h" // free_objects
-#include "object.h"
 #include "chunk.h"
+#include "value.h"
+#include "object.h" // free_objects
 #include "compiler.h"
-#include "common.h" // DEBUG_TRACE_EXECUTION
+#include "table.h"
+#include "common.h" // NULL, DEBUG_TRACE_EXECUTION
 #ifdef DEBUG_TRACE_EXECUTION
 #	include "debug.h" // disassemble_instruction
 #endif
@@ -25,10 +23,12 @@ void vm_init(VM* vm)
 {
 	stack_reset(vm);
 	vm->objects = NULL;
+	table_init(&vm->strings);
 }
 
 void vm_destroy(VM* vm)
 {
+	table_destroy(&vm->strings);
 	free_objects(&vm->objects);
 }
 
@@ -59,15 +59,8 @@ static void concatenate_strings(VM* vm)
 {
 	const ObjString* b = value_as_string(stack_pop(vm));
 	const ObjString* a = value_as_string(stack_pop(vm));
-
-	// @TODO: optimize concatenation of immutable strings
-	const int length = a->length + b->length;
-	ObjString* result = make_obj_string(&vm->objects, length);
-	memcpy(result->chars, a->chars, a->length);
-	memcpy(result->chars + a->length, b->chars, b->length);
-	result->chars[length] = '\0';
-
-	stack_push(vm, obj_value((Obj*)result));
+	ObjString* c = obj_string_concat(&vm->objects, &vm->strings, a, b);
+	stack_push(vm, obj_value((Obj*)c));
 }
 
 static void runtime_error(VM* vm, const char* format, ...)
@@ -87,7 +80,7 @@ static void runtime_error(VM* vm, const char* format, ...)
 static void debug_trace_run(const VM* vm)
 {
 #ifdef DEBUG_TRACE_EXECUTION
-	printf("          ");
+	printf(" /------> ");
 	for (const Value* slot = vm->stack; slot < vm->tos; slot++) {
 		printf("[ ");
 		value_print(*slot);
@@ -114,6 +107,7 @@ static InterpretResult run(VM* vm)
 		stack_push(vm, type_value(a op b)); \
 	} while (0)
 
+	// virtual machine fetch-decode-execute loop
 	for (;;) {
 		debug_trace_run(vm);
 		const uint8_t instruction = READ_BYTE();
@@ -169,7 +163,8 @@ InterpretResult vm_interpret(VM* vm, const char* source)
 	Chunk chunk;
 	chunk_init(&chunk);
 
-	if (!compile(source, &chunk)) {
+	// @XXX: static Objects are only freed when the VM is destroyed
+	if (!compile(source, &chunk, &vm->objects, &vm->strings)) {
 		chunk_destroy(&chunk);
 		return INTERPRET_COMPILE_ERROR;
 	}

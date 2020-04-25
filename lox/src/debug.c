@@ -2,8 +2,9 @@
 
 #include <stdio.h>
 
+#include "chunk.h"
 #include "common.h" // uint8_t
-#include "value.h" // Value, value_print
+#include "value.h" // value_print
 
 
 static int constant_instruction(const char* op, const Chunk* chk, intptr_t addr)

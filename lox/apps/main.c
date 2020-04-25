@@ -1,9 +1,9 @@
-#include <stdio.h> // fprintf, fgets, fopen, fseek, fclose, fread
+#include <stdio.h>
 #include <stdlib.h> // malloc, free, NULL
 #include <sysexits.h>
 #include <errno.h>
 
-#include <clox/vm.h>
+#include "vm.h"
 
 
 static int repl(void)

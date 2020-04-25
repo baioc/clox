@@ -35,12 +35,8 @@ bool value_equal(Value a, Value b)
 		case VAL_BOOL:   return value_as_bool(a) == value_as_bool(b);
 		case VAL_NIL:    return true;
 		case VAL_NUMBER: return value_as_number(a) == value_as_number(b);
-		case VAL_OBJ: {
-			const ObjString* a_str = value_as_string(a);
-			const ObjString* b_str = value_as_string(b);
-			return a_str->length == b_str->length
-			    && memcmp(a_str->chars, b_str->chars, a_str->length) == 0;
-		}
+		// @NOTE: this is only valid because all strings are interned.
+		case VAL_OBJ:    return value_as_string(a) == value_as_string(b);
 	}
 }
 

@@ -3,17 +3,21 @@
 
 #include "chunk.h"
 #include "common.h" // intptr_t
-#include "value.h" // Obj
+#include "value.h" // Value
+#include "object.h" // Obj
+#include "table.h"
 
 // @TODO: determine needed stack size for each chunk during compilation
 #define STACK_MAX 256
 
+// Lox bytecode virtual machine.
 typedef struct {
 	const Chunk* chunk;
 	intptr_t     pc;
 	Value        stack[STACK_MAX];
 	Value*       tos;
 	Obj*         objects;
+	Table        strings;
 } VM;
 
 typedef enum {
