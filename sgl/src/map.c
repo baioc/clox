@@ -137,11 +137,12 @@ err_t map_put(map_t* map, const void* key, const void* value)
 		if (error) return error;
 	}
 
-	// finds entry address, should be done after rehashing (if it happens)
+	// finds entry address. should be done after rehashing (if it happens)
 	struct map_entry* entry = find_entry(map, &map->buckets, key);
 
-	// if entry was totally vacant, increase hashtable's load
-	if (!entry->in_use) {
+	// if entry was vacant, increase hashtable's load
+	const bool was_vacant = !entry->in_use;
+	if (was_vacant) {
 		entry->in_use = true;
 		map->count++;
 		if (!entry->undead)
@@ -153,7 +154,8 @@ err_t map_put(map_t* map, const void* key, const void* value)
 	const size_t value_size = map->buckets.elem_size
 	                        - sizeof(struct map_entry) - map->key_size;
 	memcpy(entry->key_value + map->key_size, value, value_size);
-	return 0;
+
+	return was_vacant ? 0 : -1;
 }
 
 err_t map_delete(map_t* map, const void* key)

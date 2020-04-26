@@ -23,12 +23,14 @@ void vm_init(VM* vm)
 {
 	stack_reset(vm);
 	vm->objects = NULL;
+	table_init(&vm->globals);
 	table_init(&vm->strings);
 }
 
 void vm_destroy(VM* vm)
 {
 	table_destroy(&vm->strings);
+	table_destroy(&vm->globals);
 	free_objects(&vm->objects);
 }
 
@@ -95,6 +97,7 @@ static InterpretResult run(VM* vm)
 {
 	#define READ_BYTE() chunk_get_byte(vm->chunk, vm->pc++)
 	#define READ_CONSTANT() chunk_get_constant(vm->chunk, READ_BYTE())
+	#define READ_STRING() value_as_string(READ_CONSTANT())
 	#define BINARY_OP(type_value, op) do { \
 		if (   !value_is_number(stack_peek(vm, 0)) \
 		    || !value_is_number(stack_peek(vm, 1)) \
@@ -112,14 +115,37 @@ static InterpretResult run(VM* vm)
 		debug_trace_run(vm);
 		const uint8_t instruction = READ_BYTE();
 		switch (instruction) {
-			case OP_RETURN:
-				value_print(stack_pop(vm));
-				printf("\n");
-				return INTERPRET_OK;
+			case OP_RETURN:   return INTERPRET_OK;
 			case OP_CONSTANT: stack_push(vm, READ_CONSTANT()); break;
 			case OP_NIL:      stack_push(vm, nil_value()); break;
 			case OP_TRUE:     stack_push(vm, bool_value(true)); break;
 			case OP_FALSE:    stack_push(vm, bool_value(false)); break;
+			case OP_POP:      stack_pop(vm); break;
+			case OP_GET_GLOBAL: {
+				const ObjString* name = READ_STRING();
+				Value value;
+				if (!table_get(&vm->globals, name, &value)) {
+					runtime_error(vm, "Undefined variable '%s'.", name->chars);
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				stack_push(vm, value);
+				break;
+			}
+			case OP_DEFINE_GLOBAL: {
+				const ObjString* name = READ_STRING();
+				table_put(&vm->globals, name, stack_peek(vm, 0));
+				stack_pop(vm);
+				break;
+			}
+			case OP_SET_GLOBAL: {
+				ObjString* name = READ_STRING();
+				if (!table_put(&vm->globals, name, stack_peek(vm, 0))) {
+					table_delete(&vm->globals, name);
+					runtime_error(vm, "Undefined variable '%s'.", name->chars);
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				break;
+			}
 			case OP_EQUAL: {
 				const Value b = stack_pop(vm);
 				const Value a = stack_pop(vm);
@@ -150,10 +176,15 @@ static InterpretResult run(VM* vm)
 				}
 				stack_push(vm, number_value(-value_as_number(stack_pop(vm))));
 				break;
+			case OP_PRINT:
+				value_print(stack_pop(vm));
+				printf("\n");
+				break;
 		}
 	}
 
 	#undef BINARY_OP
+	#undef READ_STRING
 	#undef READ_CONSTANT
 	#undef READ_BYTE
 }
@@ -163,7 +194,7 @@ InterpretResult vm_interpret(VM* vm, const char* source)
 	Chunk chunk;
 	chunk_init(&chunk);
 
-	// @XXX: static Objects are only freed when the VM is destroyed
+	// @NOTE: Objects created statically are only freed with the VM
 	if (!compile(source, &chunk, &vm->objects, &vm->strings)) {
 		chunk_destroy(&chunk);
 		return INTERPRET_COMPILE_ERROR;

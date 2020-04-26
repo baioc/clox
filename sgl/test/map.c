@@ -60,6 +60,10 @@ int main(int argc, const char* argv[])
 	assert(deleted != NULL);
 	assert(strcmp(deleted, numbers[del]) == 0);
 
+	// before removal, test if map_put with existing key returns negative
+	err = map_put(&dict, &numbers[del], &del);
+	assert(err < 0);
+
 	// delete that randomly selected entry, test size and access
 	err = map_delete(&dict, &deleted);
 	free(deleted);

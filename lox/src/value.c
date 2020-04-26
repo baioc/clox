@@ -35,7 +35,7 @@ bool value_equal(Value a, Value b)
 		case VAL_BOOL:   return value_as_bool(a) == value_as_bool(b);
 		case VAL_NIL:    return true;
 		case VAL_NUMBER: return value_as_number(a) == value_as_number(b);
-		// @NOTE: this is only valid because all strings are interned.
+		// @NOTE: this only works because all strings are interned
 		case VAL_OBJ:    return value_as_string(a) == value_as_string(b);
 	}
 }

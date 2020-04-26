@@ -1,5 +1,8 @@
 #include "chunk.h"
 
+#include <limits.h>
+#include <assert.h>
+
 #include <sgl/list.h>
 
 #include "value.h"
@@ -13,6 +16,7 @@ struct line {
 
 void chunk_init(Chunk* chunk)
 {
+	assert(OP_CODE_MAX <= UINT8_MAX);
 	list_init(&chunk->code, 0, sizeof(uint8_t), NULL);
 	list_init(&chunk->lines, 0, sizeof(struct line), NULL);
 	value_array_init(&chunk->constants);

@@ -44,7 +44,8 @@ void* map_get(const map_t* map, const void* key);
 
 /** Puts the (KEY -> VALUE) entry on the MAP, overwritting any previous one.
  *
- * Returns 0 on success or ENOMEM in case ALLOC fails. */
+ * Returns ENOMEM in case ALLOC fails, a negative number if an entry with
+ * KEY already existed and has its value overwritten; zero otherwise. */
 err_t map_put(map_t* map, const void* key, const void* value);
 
 // Deletes KEY's entry from MAP. Returns 0 on success and ENOKEY otherwise.

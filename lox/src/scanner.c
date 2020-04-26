@@ -180,6 +180,7 @@ static TokenType identifier_type(const Scanner* s)
 			break;
 		case 'v': return check_keyword(s, 1, "ar", 2, TOKEN_VAR);
 		case 'w': return check_keyword(s, 1, "hile", 4, TOKEN_WHILE);
+		default:  return TOKEN_IDENTIFIER;
 	}
 }
 

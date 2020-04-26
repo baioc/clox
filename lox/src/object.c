@@ -5,9 +5,8 @@
 #include <string.h> // memcpy
 #include <stddef.h> // size_t
 
-#include <sgl/hash.h> // fnv_1a
-
 #include "common.h" // DEBUG_DYNAMIC_MEMORY
+#include "table.h"
 
 
 extern inline ObjType obj_type(Value value);
@@ -96,13 +95,9 @@ static ObjString* allocate_string(Obj** objects, Table* interned,
 	return string;
 }
 
-ObjString* make_obj_string(Obj** objs, Table* strings, const char* str, size_t n)
+static ObjString* make_obj_string_copy(Obj** objs, Table* strings,
+                                       const char* str, size_t n, hash_t hash)
 {
-	// compute hash and check if already interned
-	const hash_t hash = fnv_1a(str, n);
-	ObjString* interned = table_find_string(strings, str, n, hash);
-	if (interned != NULL) return interned;
-
 	// allocate characters
 	char* chars = malloc(n + 1);
 #ifdef DEBUG_DYNAMIC_MEMORY
@@ -122,20 +117,25 @@ ObjString* make_obj_string(Obj** objs, Table* strings, const char* str, size_t n
 	return allocate_string(objs, strings, chars, n, hash);
 }
 
-ObjString* obj_string_concat(Obj** objects, Table* strings,
+ObjString* make_obj_string(Obj** objs, Table* strings, const char* str, size_t n)
+{
+	const hash_t hash = table_hash(str, n);
+	ObjString* interned = table_find_string(strings, str, n, hash);
+	return interned != NULL ? interned
+	                        : make_obj_string_copy(objs, strings, str, n, hash);
+}
+
+ObjString* obj_string_concat(Obj** objs, Table* strings,
                              const ObjString* prefix, const ObjString* suffix)
 {
-	// prepare resultant string
+	// prepare temporary resultant string for hash
 	const size_t n = prefix->length + suffix->length;
-	char chars[n];
-	memcpy(chars, prefix->chars, prefix->length);
-	memcpy(chars + prefix->length, suffix->chars, suffix->length);
+	char str[n];
+	memcpy(str, prefix->chars, prefix->length);
+	memcpy(str + prefix->length, suffix->chars, suffix->length);
 
-	// compute hash and check if already interned
-	const hash_t hash = fnv_1a(chars, n);
-	ObjString* interned = table_find_string(strings, chars, n, hash);
-	if (interned != NULL) return interned;
-
-	// allocate Lox string object
-	return make_obj_string(objects, strings, chars, n);
+	const hash_t hash = table_hash(str, n);
+	ObjString* interned = table_find_string(strings, str, n, hash);
+	return interned != NULL ? interned
+	                        : make_obj_string_copy(objs, strings, str, n, hash);
 }

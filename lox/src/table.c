@@ -3,7 +3,7 @@
 #include <string.h> // memcmp
 
 #include <sgl/map.h>
-#include <sgl/hash.h> // hash_t
+#include <sgl/core.h> // err_t
 
 #include "object.h" // ObjString
 #include "common.h" // NULL
@@ -18,6 +18,11 @@ struct key {
 struct val {
 	ObjString* string;
 	Value      value;
+};
+
+struct adaptor {
+	void (*func)(const ObjString*, Value, void*);
+	void*  forward;
 };
 
 
@@ -57,23 +62,41 @@ bool table_get(const Table* table, const ObjString* k, Value* value)
 	return true;
 }
 
-ObjString* table_find_string(const Table* table,
-                             const char* str, size_t length, hash_t hash)
+ObjString* table_find_string(const Table* table, const char* str, size_t length,
+                             hash_t hash)
 {
 	struct key key = { .str = str, .length = length, .hash = hash };
 	const struct val* found = map_get(table, &key);
 	return found != NULL ? found->string : NULL;
 }
 
+extern inline hash_t table_hash(const void* ptr, size_t n);
+
 bool table_put(Table* table, const ObjString* k, Value value)
 {
 	struct key key = { .str = k->chars, .length = k->length, .hash = k->hash };
 	struct val val = { .string = (ObjString*)k, .value = value };
-	return map_put(table, &key, &val) == 0;
+	return map_put(table, &key, &val) < 0;
 }
 
 bool table_delete(Table* table, const ObjString* k)
 {
 	struct key key = { .str = k->chars, .length = k->length, .hash = k->hash };
 	return map_delete(table, &key) == 0;
+}
+
+static err_t for_each_adaptor(const void* key, void* value, void* forward)
+{
+	const struct adaptor* adaptor = (struct adaptor*)forward;
+	const struct val* entry = (struct val*)value;
+	adaptor->func(entry->string, entry->value, adaptor->forward);
+	return 0;
+}
+
+void table_for_each(const Table* table,
+                    void (*func)(const ObjString*, Value, void*),
+                    void* forward)
+{
+	struct adaptor adaptor = { .func = func, .forward = forward };
+	map_for_each(table, for_each_adaptor, &adaptor);
 }
