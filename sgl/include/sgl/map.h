@@ -2,29 +2,34 @@
 #define SGL_MAP_H
 
 #include "core.h"
-#include "list.h"
 #include "hash.h" // hash_fn_t
 
 // Generic hash table with constant amortized access, insertions and deletes.
 typedef struct {
-	list_t       buckets;
-	index_t      count;
-	size_t       key_size;
-	compare_fn_t keycmp;
-	hash_fn_t    hash;
+	index_t        count;
+	index_t        filled;
+	index_t        capacity;
+	byte_t*        keys;
+	byte_t*        values;
+	size_t         key_size;
+	size_t         value_size;
+	compare_fn_t   keycmp;
+	hash_fn_t      hash;
+	allocator_fn_t allocator;
 } map_t;
 
 /** Initializes MAP with initial capacity for N mappings from keys with KEY_SIZE
  * bytes - that should be comparable by KEY_CMP and hashable by KEY_HASH
  * - to values with VALUE_SIZE bytes.
  *
- * In case KEY_HASH is NULL, a default implementation will be provided.
- * The same is true for ALLOC.
+ * If ALLOC or KEY_HASH are NULL, default implementations will be provided.
  * map_destroy() must be called on MAP afterwards.
  *
  * Returns 0 on success or ENOMEM when ALLOC fails. */
 err_t map_init(map_t* map, index_t n, size_t key_size, size_t value_size,
                compare_fn_t key_cmp, hash_fn_t key_hash, allocator_fn_t alloc);
+
+// @XXX: if no key_hash is provided, use a binary search tree as a map...
 
 // Frees any resources allocated by map_init().
 void map_destroy(map_t* map);
