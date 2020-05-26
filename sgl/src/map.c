@@ -33,7 +33,7 @@ err_t map_init(map_t* map, index_t n, size_t key_size, size_t value_size,
 {
 	assert(n >= 0);
 	assert(key_size > 0);
-	assert(value_size >= 0);
+	assert(value_size > 0);
 	assert(key_cmp != NULL);
 
 	n /= MAP_MAX_LOAD; // adjust initial capacity by load factor
