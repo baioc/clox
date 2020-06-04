@@ -5,10 +5,10 @@
 
 // Dynamic array with contiguous storage, constant access and amortized insert.
 typedef struct {
-	index_t        length;
-	index_t        capacity;
-	byte_t*        data;
-	size_t         elem_size;
+	index_t length;
+	index_t capacity;
+	byte_t* data;
+	size_t elem_size;
 	allocator_fn_t allocator;
 } list_t;
 

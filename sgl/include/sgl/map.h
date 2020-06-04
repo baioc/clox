@@ -6,15 +6,15 @@
 
 // Generic hash table with constant amortized access, insertions and deletes.
 typedef struct {
-	index_t        count;
-	index_t        filled;
-	index_t        capacity;
-	byte_t*        keys;
-	byte_t*        values;
-	size_t         key_size;
-	size_t         value_size;
-	compare_fn_t   keycmp;
-	hash_fn_t      hash;
+	index_t count;
+	index_t filled;
+	index_t capacity;
+	byte_t* keys;
+	byte_t* values;
+	size_t key_size;
+	size_t value_size;
+	compare_fn_t keycmp;
+	hash_fn_t hash;
 	allocator_fn_t allocator;
 } map_t;
 
