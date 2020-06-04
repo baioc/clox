@@ -14,15 +14,15 @@ typedef enum {
 } ObjType;
 
 struct Obj {
-	ObjType     type;
+	ObjType type;
 	struct Obj* next;
 };
 
 struct ObjString {
 	struct Obj obj; // type punning ("struct inheritance") enabler
-	hash_t     hash;
-	size_t     length;
-	char*      chars;
+	hash_t hash;
+	size_t length;
+	char* chars;
 };
 
 

@@ -21,10 +21,10 @@ extern inline Obj* value_as_obj(Value value);
 void value_print(Value value)
 {
 	switch (value.type) {
-		case VAL_BOOL:   printf(value_as_bool(value) ? "true" : "false"); break;
-		case VAL_NIL:    printf("nil"); break;
+		case VAL_BOOL: printf(value_as_bool(value) ? "true" : "false"); break;
+		case VAL_NIL: printf("nil"); break;
 		case VAL_NUMBER: printf("%g", value_as_number(value)); break;
-		case VAL_OBJ:    obj_print(value); break;
+		case VAL_OBJ: obj_print(value); break;
 	}
 }
 
@@ -32,11 +32,11 @@ bool value_equal(Value a, Value b)
 {
 	if (a.type != b.type) return false;
 	switch (a.type) {
-		case VAL_BOOL:   return value_as_bool(a) == value_as_bool(b);
-		case VAL_NIL:    return true;
+		case VAL_BOOL: return value_as_bool(a) == value_as_bool(b);
+		case VAL_NIL: return true;
 		case VAL_NUMBER: return value_as_number(a) == value_as_number(b);
 		// @NOTE: this only works because all strings are interned
-		case VAL_OBJ:    return value_as_string(a) == value_as_string(b);
+		case VAL_OBJ: return value_as_string(a) == value_as_string(b);
 	}
 }
 

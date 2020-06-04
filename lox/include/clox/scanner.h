@@ -5,7 +5,7 @@
 typedef struct {
 	const char* start;
 	const char* current;
-	int         line;
+	int line;
 } Scanner;
 
 // Enumeration of valid Lox tokens, plus some extra signaling tokens.
@@ -49,10 +49,10 @@ typedef enum {
 
 // A simple token structure.
 typedef struct Token {
-	TokenType   type;
+	TokenType type;
 	const char* start;
-	int         length;
-	int         line;
+	int length;
+	int line;
 } Token;
 
 // Initializes SCANNER to read from null-terminated string SOURCE.

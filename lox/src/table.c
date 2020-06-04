@@ -11,18 +11,18 @@
 
 struct key {
 	const char* str;
-	size_t      length;
-	hash_t      hash;
+	size_t length;
+	hash_t hash;
 };
 
 struct val {
 	ObjString* string;
-	Value      value;
+	Value value;
 };
 
-struct adaptor {
-	void (*func)(const ObjString*, Value, void*);
-	void*  forward;
+struct for_each_closure {
+	void (*func)(const ObjString*, Value*, void*);
+	void* forward;
 };
 
 
@@ -87,16 +87,16 @@ bool table_delete(Table* table, const ObjString* k)
 
 static err_t for_each_adaptor(const void* key, void* value, void* forward)
 {
-	const struct adaptor* adaptor = (struct adaptor*)forward;
-	const struct val* entry = (struct val*)value;
-	adaptor->func(entry->string, entry->value, adaptor->forward);
+	const struct for_each_closure* adaptor = (struct for_each_closure*)forward;
+	struct val* entry = (struct val*)value;
+	adaptor->func(entry->string, &entry->value, adaptor->forward);
 	return 0;
 }
 
 void table_for_each(const Table* table,
-                    void (*func)(const ObjString*, Value, void*),
+                    void (*func)(const ObjString*, Value*, void*),
                     void* forward)
 {
-	struct adaptor adaptor = { .func = func, .forward = forward };
+	struct for_each_closure adaptor = { .func = func, .forward = forward };
 	map_for_each(table, for_each_adaptor, &adaptor);
 }

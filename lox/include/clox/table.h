@@ -40,7 +40,7 @@ bool table_delete(Table* table, const ObjString* key);
 /** Iterates (in unspecified order) through all entries in TABLE, calling FUNC
  * on each one with an extra forwarded argument, eg: FUNC(k, v, FORWARD). */
 void table_for_each(const Table* table,
-                    void (*func)(const ObjString*, Value, void*),
+                    void (*func)(const ObjString*, Value*, void*),
                     void* forward);
 
 #endif // CLOX_TABLE_H

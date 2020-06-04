@@ -14,6 +14,8 @@ enum OpCode {
 	OP_TRUE,
 	OP_FALSE,
 	OP_POP,
+	OP_GET_LOCAL,
+	OP_SET_LOCAL,
 	OP_GET_GLOBAL,
 	OP_DEFINE_GLOBAL,
 	OP_SET_GLOBAL,
@@ -33,8 +35,8 @@ enum OpCode {
 
 // A chunk of VM-executable, compiled bytecode.
 typedef struct {
-	list_t     code;
-	list_t     lines;
+	list_t code;
+	list_t lines;
 	ValueArray constants;
 } Chunk;
 

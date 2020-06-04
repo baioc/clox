@@ -9,7 +9,7 @@
 
 
 struct line {
-	int      number;
+	int number;
 	intptr_t address;
 };
 
@@ -41,8 +41,8 @@ void chunk_write(Chunk* chunk, uint8_t byte, int line)
 
 	// add to lines list only if empty or the last one has a different number
 	list_t* lines = &chunk->lines;
-	if (   list_empty(lines)
-	    || ((struct line*)list_ref(lines, list_size(lines) - 1))->number != line
+	if (list_empty(lines)
+	 || ((struct line*)list_ref(lines, list_size(lines) - 1))->number != line
 	   ) {
 		const struct line line_start = { .number = line, .address = offset };
 		list_append(lines, &line_start);

@@ -22,12 +22,21 @@ static int simple_instruction(const char* name)
 	return 1;
 }
 
+static int byte_instruction(const char* name, const Chunk* chk, intptr_t addr)
+{
+	const uint8_t slot = chunk_get_byte(chk, addr + 1);
+	printf("%-16s %4d\n", name, slot);
+	return 2;
+}
+
 int disassemble_instruction(const Chunk* chunk, intptr_t offset)
 {
 	#define CASE_SIMPLE(OP_CODE) \
 		case OP_CODE: return simple_instruction(#OP_CODE)
 	#define CASE_CONSTANT(OP_CODE) \
 		case OP_CODE: return constant_instruction(#OP_CODE, chunk, offset)
+	#define CASE_BYTE(OP_CODE) \
+		case OP_CODE: return byte_instruction(#OP_CODE, chunk, offset)
 
 	// print byte address and line number
 	printf("%04d ", offset);
@@ -45,6 +54,8 @@ int disassemble_instruction(const Chunk* chunk, intptr_t offset)
 		CASE_SIMPLE(OP_TRUE);
 		CASE_SIMPLE(OP_FALSE);
 		CASE_SIMPLE(OP_POP);
+		CASE_BYTE(OP_GET_LOCAL);
+		CASE_BYTE(OP_SET_LOCAL);
 		CASE_CONSTANT(OP_GET_GLOBAL);
 		CASE_CONSTANT(OP_DEFINE_GLOBAL);
 		CASE_CONSTANT(OP_SET_GLOBAL);
@@ -62,6 +73,8 @@ int disassemble_instruction(const Chunk* chunk, intptr_t offset)
 		default: printf("Unknown opcode %d\n", instruction); return 1;
 	}
 
+	#undef CASE_BYTE
+	#undef CASE_CONSTANT
 	#undef CASE_SIMPLE
 }
 

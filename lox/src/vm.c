@@ -115,13 +115,27 @@ static InterpretResult run(VM* vm)
 		debug_trace_run(vm);
 		const uint8_t instruction = READ_BYTE();
 		switch (instruction) {
-			case OP_RETURN:   return INTERPRET_OK;
+			case OP_RETURN: return INTERPRET_OK;
 			case OP_CONSTANT: stack_push(vm, READ_CONSTANT()); break;
-			case OP_NIL:      stack_push(vm, nil_value()); break;
-			case OP_TRUE:     stack_push(vm, bool_value(true)); break;
-			case OP_FALSE:    stack_push(vm, bool_value(false)); break;
-			case OP_POP:      stack_pop(vm); break;
+			case OP_NIL: stack_push(vm, nil_value()); break;
+			case OP_TRUE: stack_push(vm, bool_value(true)); break;
+			case OP_FALSE: stack_push(vm, bool_value(false)); break;
+			case OP_POP: stack_pop(vm); break;
+			case OP_GET_LOCAL: {
+				const uint8_t slot = READ_BYTE();
+				stack_push(vm, vm->stack[slot]);
+				break;
+			}
+			case OP_SET_LOCAL: {
+				const uint8_t slot = READ_BYTE();
+				// assignment is an expression -> no need to pop assigned value
+				vm->stack[slot] = stack_peek(vm, 0);
+				break;
+			}
 			case OP_GET_GLOBAL: {
+				/* @TODO: optimize access to global variables via statically
+				computed array indexes instead of hash table name lookups: see
+				http://craftinginterpreters.com/global-variables.html ex. 2. */
 				const ObjString* name = READ_STRING();
 				Value value;
 				if (!table_get(&vm->globals, name, &value)) {
@@ -152,8 +166,8 @@ static InterpretResult run(VM* vm)
 				stack_push(vm, bool_value(value_equal(a, b)));
 				break;
 			}
-			case OP_GREATER:  BINARY_OP(bool_value, >); break;
-			case OP_LESS:     BINARY_OP(bool_value, <); break;
+			case OP_GREATER: BINARY_OP(bool_value, >); break;
+			case OP_LESS: BINARY_OP(bool_value, <); break;
 			case OP_ADD:
 				if (value_is_string(stack_peek(vm, 0))
 				 && value_is_string(stack_peek(vm, 1))
@@ -165,7 +179,7 @@ static InterpretResult run(VM* vm)
 				break;
 			case OP_SUBTRACT: BINARY_OP(number_value, -); break;
 			case OP_MULTIPLY: BINARY_OP(number_value, *); break;
-			case OP_DIVIDE:   BINARY_OP(number_value, /); break;
+			case OP_DIVIDE: BINARY_OP(number_value, /); break;
 			case OP_NOT:
 				stack_push(vm, bool_value(value_is_falsey(stack_pop(vm))));
 				break;
