@@ -10,7 +10,7 @@
 #include "value.h"
 #include "object.h"
 #include "table.h"
-#include "common.h" // uint8_t, UINT8_MAX, DEBUG_PRINT_CODE
+#include "common.h" // uint8_t, UINT8_MAX, UINT16_MAX, DEBUG_PRINT_CODE
 #ifdef DEBUG_PRINT_CODE
 #	include "debug.h" // disassemble_chunk
 #endif
@@ -68,6 +68,12 @@ static void binary(Parser* parser, bool can_assign);
 static void literal(Parser* parser, bool can_assign);
 static void string(Parser* parser, bool can_assign);
 static void variable(Parser* parser, bool can_assign);
+static void and(Parser* parser, bool can_assign);
+static void or(Parser* parser, bool can_assign);
+
+static void declaration(Parser* parser);
+static void statement(Parser* parser);
+static void expression(Parser* parser);
 
 static ParseRule rules[] = {
 	[TOKEN_LEFT_PAREN]    = { grouping, NULL,   PREC_NONE       },
@@ -92,7 +98,7 @@ static ParseRule rules[] = {
 	[TOKEN_IDENTIFIER]    = { variable, NULL,   PREC_NONE       },
 	[TOKEN_STRING]        = { string,   NULL,   PREC_NONE       },
 	[TOKEN_NUMBER]        = { number,   NULL,   PREC_NONE       },
-	[TOKEN_AND]           = { NULL,     NULL,   PREC_NONE       },
+	[TOKEN_AND]           = { NULL,     and,    PREC_AND        },
 	[TOKEN_CLASS]         = { NULL,     NULL,   PREC_NONE       },
 	[TOKEN_ELSE]          = { NULL,     NULL,   PREC_NONE       },
 	[TOKEN_FALSE]         = { literal,  NULL,   PREC_NONE       },
@@ -100,7 +106,7 @@ static ParseRule rules[] = {
 	[TOKEN_FUN]           = { NULL,     NULL,   PREC_NONE       },
 	[TOKEN_IF]            = { NULL,     NULL,   PREC_NONE       },
 	[TOKEN_NIL]           = { literal,  NULL,   PREC_NONE       },
-	[TOKEN_OR]            = { NULL,     NULL,   PREC_NONE       },
+	[TOKEN_OR]            = { NULL,     or,     PREC_OR         },
 	[TOKEN_PRINT]         = { NULL,     NULL,   PREC_NONE       },
 	[TOKEN_RETURN]        = { NULL,     NULL,   PREC_NONE       },
 	[TOKEN_SUPER]         = { NULL,     NULL,   PREC_NONE       },
@@ -184,7 +190,7 @@ static void consume(Parser* parser, TokenType type, const char* message)
 }
 
 // Implements the core of Vaughan Pratt's recursive parsing algorithm.
-static void parse_precedence(Parser* parser, Precedence precedence)
+static void parse_with_precedence(Parser* parser, Precedence precedence)
 {
 	advance(parser); // advances to next token, so previous must be analyzed
 	ParseFn prefix_rule = get_rule(parser->previous.type)->prefix;
@@ -207,63 +213,9 @@ static void parse_precedence(Parser* parser, Precedence precedence)
 		error(parser, "Invalid assignment target.");
 }
 
-static void inline expression(Parser* parser)
+static void expression(Parser* parser)
 {
-	parse_precedence(parser, PREC_ASSIGNMENT);
-}
-
-static void expression_statement(Parser* parser)
-{
-	expression(parser);
-	consume(parser, TOKEN_SEMICOLON, "Expect ';' after value.");
-	emit_byte(parser, OP_POP);
-}
-
-static void print_statement(Parser* parser)
-{
-	expression(parser);
-	consume(parser, TOKEN_SEMICOLON, "Expect ';' after value.");
-	emit_byte(parser, OP_PRINT);
-}
-
-static void declaration(Parser* parser); // forward declaration for block()
-static void block(Parser* parser)
-{
-	while (!check(parser, TOKEN_RIGHT_BRACE) && !check(parser, TOKEN_EOF)) {
-		declaration(parser);
-	}
-	consume(parser, TOKEN_RIGHT_BRACE, "Expect '}' after block.");
-}
-
-static inline void scope_begin(Parser* parser)
-{
-	parser->compiler.scope_depth++;
-}
-
-static void scope_end(Parser* p)
-{
-	// reduce scope depth and then pop all locals in the previous scope
-	p->compiler.scope_depth--;
-	while (   p->compiler.local_count > 0
-	       && p->compiler.locals[p->compiler.local_count - 1].depth > p->compiler.scope_depth
-	      ) {
-		// @TODO: optimize scope exit with an instruction to pop all locals
-		emit_byte(p, OP_POP);
-		p->compiler.local_count--;
-	}
-}
-
-static void statement(Parser* parser)
-{
-	if (match(parser, TOKEN_PRINT)) {
-		print_statement(parser);
-	} else if (match(parser, TOKEN_LEFT_BRACE)) {
-		scope_begin(parser);
-		block(parser);
-		scope_end(parser);
-	} else {
-		expression_statement(parser);
-	}
+	parse_with_precedence(parser, PREC_ASSIGNMENT);
 }
 
 static uint8_t make_constant(Parser* parser, Value value)
@@ -359,6 +311,222 @@ static void variable_declaration(Parser* parser)
 	define_variable(parser, global);
 }
 
+
+static void expression_statement(Parser* parser)
+{
+	expression(parser);
+	consume(parser, TOKEN_SEMICOLON, "Expect ';' after value.");
+	emit_byte(parser, OP_POP);
+}
+
+static void print_statement(Parser* parser)
+{
+	expression(parser);
+	consume(parser, TOKEN_SEMICOLON, "Expect ';' after value.");
+	emit_byte(parser, OP_PRINT);
+}
+
+static int emit_jump(Parser* parser, uint8_t instruction)
+{
+	emit_byte(parser, instruction);
+	// @NOTE: jump instructions use 16 bit addresses
+	emit_byte(parser, 0xFF);
+	emit_byte(parser, 0xFF);
+	return chunk_size(parser->compiler.chunk) - 2;
+}
+
+static void patch_jump(Parser* p, int address)
+{
+	const int stride = chunk_size(p->compiler.chunk) - (address + 2);
+	if (stride > UINT16_MAX)
+		error(p, "Too much code to jump over.");
+
+	// @NOTE: this implies the Lox VM is big-endian
+	chunk_set_byte(p->compiler.chunk, address, (stride >> 8) & 0xFF);
+	chunk_set_byte(p->compiler.chunk, address + 1, stride & 0xFF);
+}
+
+static void if_statement(Parser* parser)
+{
+	// check condition
+	consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
+	expression(parser);
+	consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+
+	// jump over consequence if false
+	const int then_jump = emit_jump(parser, OP_JUMP_IF_FALSE);
+
+	// consequence
+	emit_byte(parser, OP_POP);
+	statement(parser);
+	const int else_jump = emit_jump(parser, OP_JUMP);
+	patch_jump(parser, then_jump);
+
+	// alternative
+	emit_byte(parser, OP_POP);
+	if (match(parser, TOKEN_ELSE)) statement(parser);
+	patch_jump(parser, else_jump);
+}
+
+static void emit_loop(Parser* parser, uint8_t target)
+{
+	emit_byte(parser, OP_LOOP); // like OP_JUMP, but jumps backwards
+
+	// calculate jump length, needs to acknowledge OP_JUMP's 16-bit operand
+	const int stride = chunk_size(parser->compiler.chunk) - target + 2;
+	if (stride > UINT16_MAX)
+		error(parser, "Loop body too large.");
+
+	emit_byte(parser, (stride >> 8) & 0xFF);
+	emit_byte(parser, stride & 0xFF);
+}
+
+static void while_statement(Parser* parser)
+{
+	// check condition expression
+	const int loop_jump = chunk_size(parser->compiler.chunk);
+	consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
+	expression(parser);
+	consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+
+	// if false, exit loop
+	const int break_jump = emit_jump(parser, OP_JUMP_IF_FALSE);
+
+	// otherwise, pop it and execute loop body
+	emit_byte(parser, OP_POP);
+	statement(parser);
+	emit_loop(parser, loop_jump);
+	patch_jump(parser, break_jump);
+
+	// on exit, pop evaluated condition
+	emit_byte(parser, OP_POP);
+}
+
+static void block(Parser* parser)
+{
+	while (!check(parser, TOKEN_RIGHT_BRACE) && !check(parser, TOKEN_EOF)) {
+		declaration(parser);
+	}
+	consume(parser, TOKEN_RIGHT_BRACE, "Expect '}' after block.");
+}
+
+static inline void scope_begin(Parser* parser)
+{
+	parser->compiler.scope_depth++;
+}
+
+static void scope_end(Parser* p)
+{
+	// reduce scope depth and then pop all locals in the previous scope
+	p->compiler.scope_depth--;
+	while (   p->compiler.local_count > 0
+	       && p->compiler.locals[p->compiler.local_count - 1].depth > p->compiler.scope_depth
+	      ) {
+		// @TODO: optimize scope exit with an instruction to pop all locals
+		emit_byte(p, OP_POP);
+		p->compiler.local_count--;
+	}
+}
+
+static void for_statement(Parser* parser)
+{
+	scope_begin(parser);
+
+	// initialization step
+	consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
+	if (match(parser, TOKEN_SEMICOLON))
+		/* no initializer */;
+	else if (match(parser, TOKEN_VAR))
+		variable_declaration(parser); // variable declared in the for's scope
+	else
+		expression_statement(parser);
+
+	// condition checking
+	int loop_jump = chunk_size(parser->compiler.chunk);
+	int break_jump = -1;
+	if (!match(parser, TOKEN_SEMICOLON)) {
+		expression(parser);
+		consume(parser, TOKEN_SEMICOLON, "Expect ';' after loop condition.");
+		// if false, exit the loop
+		break_jump = emit_jump(parser, OP_JUMP_IF_FALSE);
+		// otherwise, start loop body after popping the evaluated condition
+		emit_byte(parser, OP_POP);
+	}
+
+	// increment step
+	if (!match(parser, TOKEN_RIGHT_PAREN)) {
+		// increment is compiled before the actual body, so first must jump
+		const int body_jump = emit_jump(parser, OP_JUMP);
+		// this is the actual increment code
+		const int increment_jump = chunk_size(parser->compiler.chunk);
+		expression(parser);
+		emit_byte(parser, OP_POP);
+		consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after for clauses.");
+		emit_loop(parser, loop_jump); // after increment, loop back
+		// the body code generate below will jump to this increment step
+		loop_jump = increment_jump;
+		patch_jump(parser, body_jump);
+	}
+
+	// execute body and loop back
+	statement(parser);
+	emit_loop(parser, loop_jump);
+
+	// the loop exit is only generated when there's a condition
+	// @NOTE: this makes `for (;;)` faster than `while (true)`
+	if (break_jump >= 0) {
+		patch_jump(parser, break_jump);
+		emit_byte(parser, OP_POP);
+	}
+
+	scope_end(parser);
+}
+
+static void statement(Parser* parser)
+{
+	if (match(parser, TOKEN_PRINT)) {
+		print_statement(parser);
+	} else if (match(parser, TOKEN_LEFT_BRACE)) {
+		scope_begin(parser);
+		block(parser);
+		scope_end(parser);
+	} else if (match(parser, TOKEN_IF)) {
+		if_statement(parser);
+	} else if (match(parser, TOKEN_WHILE)) {
+		while_statement(parser);
+	} else if (match(parser, TOKEN_FOR)) {
+		for_statement(parser);
+	} else {
+		expression_statement(parser);
+	}
+}
+
+static void and(Parser* parser, bool can_assign)
+{
+	// if the left operand is false, leave it on the stack
+	const int end_jump = emit_jump(parser, OP_JUMP_IF_FALSE);
+
+	// otherwise, pop it and evaluate the rest of the expression
+	emit_byte(parser, OP_POP);
+	parse_with_precedence(parser, PREC_AND);
+	patch_jump(parser, end_jump);
+}
+
+static void or(Parser* parser, bool can_assign)
+{
+	// if the left operand is false, skip the next jump ...
+	const int else_jump = emit_jump(parser, OP_JUMP_IF_FALSE);
+
+	// otherwise (is true), leave it on the stack and skip other sub-expressions
+	const int end_jump = emit_jump(parser, OP_JUMP);
+	patch_jump(parser, else_jump);
+
+	// ... then pop it and evaluate the rest of the expression
+	emit_byte(parser, OP_POP);
+	parse_with_precedence(parser, PREC_OR);
+	patch_jump(parser, end_jump);
+}
+
 static void synchronize(Parser* parser)
 {
 	parser->panic = false;
@@ -408,7 +576,7 @@ static void unary(Parser* parser, bool can_assign)
 	const TokenType operator_type = parser->previous.type;
 
 	// compile the operand
-	parse_precedence(parser, PREC_UNARY);
+	parse_with_precedence(parser, PREC_UNARY);
 
 	// emit instruction defined by operator
 	switch (operator_type) {
@@ -423,7 +591,7 @@ static void binary(Parser* parser, bool can_assign)
 	const TokenType operator_type = parser->previous.type;
 
 	// compile the right operand
-	parse_precedence(parser, get_rule(operator_type)->precedence + 1);
+	parse_with_precedence(parser, get_rule(operator_type)->precedence + 1);
 
 	// emit operator instruction
 	switch (operator_type) {

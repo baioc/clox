@@ -54,6 +54,11 @@ uint8_t chunk_get_byte(const Chunk* chunk, intptr_t offset)
 	return *((uint8_t*)list_ref(&chunk->code, offset));
 }
 
+void chunk_set_byte(const Chunk* chunk, intptr_t offset, uint8_t value)
+{
+	*((uint8_t*)list_ref(&chunk->code, offset)) = value;
+}
+
 static int linecmp(const void* a, const void* b)
 {
 	return ((struct line*)a)->address - ((struct line*)b)->address;

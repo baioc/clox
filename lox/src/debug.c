@@ -29,6 +29,14 @@ static int byte_instruction(const char* name, const Chunk* chk, intptr_t addr)
 	return 2;
 }
 
+static int jump_instruction(const char* op, int sgn, const Chunk* chk, int addr)
+{
+	uint16_t jump = chunk_get_byte(chk, addr + 1) << 8;
+	jump |= chunk_get_byte(chk, addr + 2);
+	printf("%-16s %4d -> %d\n", op, addr, addr + 3 + sgn * jump);
+	return 3;
+}
+
 int disassemble_instruction(const Chunk* chunk, intptr_t offset)
 {
 	#define CASE_SIMPLE(OP_CODE) \
@@ -37,6 +45,8 @@ int disassemble_instruction(const Chunk* chunk, intptr_t offset)
 		case OP_CODE: return constant_instruction(#OP_CODE, chunk, offset)
 	#define CASE_BYTE(OP_CODE) \
 		case OP_CODE: return byte_instruction(#OP_CODE, chunk, offset)
+	#define CASE_JUMP(OP_CODE, SIGN) \
+		case OP_CODE: return jump_instruction(#OP_CODE, (SIGN), chunk, offset)
 
 	// print byte address and line number
 	printf("%04d ", offset);
@@ -69,10 +79,14 @@ int disassemble_instruction(const Chunk* chunk, intptr_t offset)
 		CASE_SIMPLE(OP_NOT);
 		CASE_SIMPLE(OP_NEGATE);
 		CASE_SIMPLE(OP_PRINT);
+		CASE_JUMP(OP_JUMP, 1);
+		CASE_JUMP(OP_JUMP_IF_FALSE, 1);
 		CASE_SIMPLE(OP_RETURN);
+		CASE_JUMP(OP_LOOP, -1);
 		default: printf("Unknown opcode %d\n", instruction); return 1;
 	}
 
+	#undef CASE_JUMP
 	#undef CASE_BYTE
 	#undef CASE_CONSTANT
 	#undef CASE_SIMPLE

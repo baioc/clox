@@ -2,24 +2,22 @@
 #define CLOX_VM_H
 
 #include "chunk.h"
-#include "common.h" // intptr_t
+#include "common.h" // intptr_t, UINT8_MAX
 #include "value.h" // Value
 #include "object.h" // Obj
 #include "table.h"
 
-// @TODO: determine needed stack size for each chunk during comp. time
-#define VM_STACK_MAX 256
 // Lox bytecode virtual machine.
 typedef struct {
 	const Chunk* chunk;
 	intptr_t pc;
-	Value stack[VM_STACK_MAX];
+	// @TODO: determine needed stack size for each chunk during comp. time
+	Value stack[UINT8_MAX + 1];
 	Value* tos;
 	Obj* objects;
 	Table globals;
 	Table strings;
 } VM;
-#undef VM_STACK_MAX
 
 typedef enum {
 	INTERPRET_OK,

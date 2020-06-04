@@ -8,7 +8,7 @@
 #include "object.h" // free_objects
 #include "compiler.h"
 #include "table.h"
-#include "common.h" // NULL, DEBUG_TRACE_EXECUTION
+#include "common.h"
 #ifdef DEBUG_TRACE_EXECUTION
 #	include "debug.h" // disassemble_instruction
 #endif
@@ -97,6 +97,9 @@ static InterpretResult run(VM* vm)
 {
 	#define READ_BYTE() chunk_get_byte(vm->chunk, vm->pc++)
 	#define READ_CONSTANT() chunk_get_constant(vm->chunk, READ_BYTE())
+	#define READ_SHORT() \
+		(vm->pc += 2, \
+		 (chunk_get_byte(vm->chunk, vm->pc - 2) << 8) | chunk_get_byte(vm->chunk, vm->pc - 1))
 	#define READ_STRING() value_as_string(READ_CONSTANT())
 	#define BINARY_OP(type_value, op) do { \
 		if (   !value_is_number(stack_peek(vm, 0)) \
@@ -115,7 +118,6 @@ static InterpretResult run(VM* vm)
 		debug_trace_run(vm);
 		const uint8_t instruction = READ_BYTE();
 		switch (instruction) {
-			case OP_RETURN: return INTERPRET_OK;
 			case OP_CONSTANT: stack_push(vm, READ_CONSTANT()); break;
 			case OP_NIL: stack_push(vm, nil_value()); break;
 			case OP_TRUE: stack_push(vm, bool_value(true)); break;
@@ -194,11 +196,29 @@ static InterpretResult run(VM* vm)
 				value_print(stack_pop(vm));
 				printf("\n");
 				break;
+			case OP_JUMP: {
+				const uint16_t jump = READ_SHORT();
+				vm->pc += jump;
+				break;
+			}
+			case OP_JUMP_IF_FALSE: {
+				const uint16_t jump = READ_SHORT();
+				if (value_is_falsey(stack_peek(vm, 0)))
+					vm->pc += jump;
+				break;
+			}
+			case OP_LOOP: {
+				const uint16_t jump = READ_SHORT();
+				vm->pc -= jump;
+				break;
+			}
+			case OP_RETURN: return INTERPRET_OK;
 		}
 	}
 
 	#undef BINARY_OP
 	#undef READ_STRING
+	#undef READ_SHORT
 	#undef READ_CONSTANT
 	#undef READ_BYTE
 }
