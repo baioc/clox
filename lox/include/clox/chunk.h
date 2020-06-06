@@ -32,6 +32,7 @@ enum OpCode {
 	OP_JUMP,
 	OP_JUMP_IF_FALSE,
 	OP_LOOP,
+	OP_CALL,
 	OP_RETURN,
 	OP_CODE_MAX,
 };

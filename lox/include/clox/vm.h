@@ -4,20 +4,31 @@
 #include "chunk.h"
 #include "common.h" // intptr_t, UINT8_MAX
 #include "value.h" // Value
-#include "object.h" // Obj
+#include "object.h" // Obj, ObjFunction
 #include "table.h"
+
+typedef struct {
+	intptr_t program_counter;
+	Value* frame_pointer;
+	ObjFunction* subroutine;
+} CallFrame;
+
+#define FRAMES_MAX 64
+#define STACK_MAX (FRAMES_MAX * (UINT8_MAX + 1))
 
 // Lox bytecode virtual machine.
 typedef struct {
-	const Chunk* chunk;
-	intptr_t pc;
-	// @TODO: determine needed stack size for each chunk during comp. time
-	Value stack[UINT8_MAX + 1];
-	Value* tos;
+	CallFrame frames[FRAMES_MAX];
+	int frame_count;
+	Value stack[STACK_MAX];
+	Value* stack_pointer;
 	Obj* objects;
 	Table globals;
 	Table strings;
 } VM;
+
+#undef STACK_MAX
+#undef FRAMES_MAX
 
 typedef enum {
 	INTERPRET_OK,

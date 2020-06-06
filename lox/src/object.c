@@ -4,9 +4,35 @@
 #include <stdlib.h> // malloc, free
 #include <string.h> // memcpy
 #include <stddef.h> // size_t
+#include <assert.h>
 
 #include "common.h" // DEBUG_DYNAMIC_MEMORY
 #include "table.h"
+#include "chunk.h"
+
+
+#ifdef DEBUG_DYNAMIC_MEMORY
+#	define DEBUG_FREE_OBJ(obj, type, size) \
+		printf(";;; Freeing %s (%u bytes) at %p\n", #type, size, obj)
+
+#	define DEBUG_MALLOC_OBJ(obj, type, size) \
+		printf(";;; Allocating [%d] object (%u bytes) at %p\n", type, size, obj)
+
+#	define DEBUG_FREE_EXTRA(obj, extra_ptr, type_str, size) do { \
+			printf(";;; Freeing %s ", type_str); \
+			obj_print(obj_value(obj)); \
+			printf(" (%u bytes) at %p\n", size, extra_ptr); \
+		} while (0)
+
+#	define DEBUG_MALLOC_EXTRA(extra_ptr, type_str, size) \
+		printf(";;; Allocating %s (%u bytes) at %p\n", type_str, size, extra_ptr)
+
+#else
+#	define DEBUG_FREE_OBJ(obj, type) ((void)0)
+#	define DEBUG_MALLOC_OBJ(obj, type, size) ((void)0)
+#	define DEBUG_FREE_EXTRA(obj, extra, type_str, size) ((void)0)
+#	define DEBUG_MALLOC_EXTRA(extra_ptr, type_str, size) ((void)0)
+#endif
 
 
 extern inline ObjType obj_type(Value value);
@@ -15,14 +41,33 @@ extern inline bool value_obj_is_type(Value value, ObjType type);
 
 extern inline bool value_is_string(Value value);
 
+extern inline bool value_is_function(Value value);
+
+extern inline bool value_is_native(Value value);
+
 extern inline ObjString* value_as_string(Value value);
 
 extern inline char* value_as_c_str(Value value);
+
+extern inline ObjFunction* value_as_function(Value value);
+
+extern inline NativeFn value_as_native(Value value);
+
+static void print_function(ObjFunction* function)
+{
+	if (function->name == NULL)
+		printf("<script>");
+	else
+		printf("<fn %s>", function->name->chars);
+}
 
 void obj_print(Value value)
 {
 	switch (obj_type(value)) {
 		case OBJ_STRING: printf("\"%s\"", value_as_c_str(value)); break;
+		case OBJ_FUNCTION: print_function(value_as_function(value)); break;
+		case OBJ_NATIVE: printf("<native fn>"); break;
+		default: assert(false);
 	}
 }
 
@@ -31,21 +76,24 @@ static void free_obj(Obj* object)
 	switch (object->type) {
 		case OBJ_STRING: {
 			ObjString* string = (ObjString*)object;
-
-		#ifdef DEBUG_DYNAMIC_MEMORY
-			printf(";;; Freeing string \"%s\" (%u bytes) at %p\n",
-			       string->chars, string->length + 1, string->chars);
-		#endif
+			DEBUG_FREE_EXTRA(object, string->chars, "string", string->length + 1);
 			free(string->chars);
-
-		#ifdef DEBUG_DYNAMIC_MEMORY
-			printf(";;; Freeing <string> object (%u bytes) at %p\n",
-			       sizeof(ObjString), string);
-		#endif
+			DEBUG_FREE_OBJ(object, ObjString, sizeof(ObjString));
 			free(string);
-
 			break;
 		}
+		case OBJ_FUNCTION: {
+			ObjFunction* function = (ObjFunction*)object;
+			chunk_destroy(&function->bytecode);
+			DEBUG_FREE_OBJ(object, ObjFunction, sizeof(ObjFunction));
+			free(function);
+			break;
+		}
+		case OBJ_NATIVE:
+			DEBUG_FREE_OBJ(object, ObjNative, sizeof(ObjNative));
+			free(object);
+			break;
+		default: assert(false);
 	}
 }
 
@@ -65,9 +113,7 @@ void free_objects(Obj** objects)
 static Obj* allocate_obj(Obj** objects, size_t size, ObjType type)
 {
 	Obj* obj = malloc(size);
-#ifdef DEBUG_DYNAMIC_MEMORY
-	printf(";;; Allocating <%d> object (%u bytes) at %p\n", type, size, obj);
-#endif
+	DEBUG_MALLOC_OBJ(obj, type, size);
 	if (obj == NULL) {
 		fprintf(stderr, "Out of memory!\n");
 		exit(74);
@@ -100,10 +146,7 @@ static ObjString* make_obj_string_copy(Obj** objs, Table* strings,
 {
 	// allocate characters
 	char* chars = malloc(n + 1);
-#ifdef DEBUG_DYNAMIC_MEMORY
-	printf(";;; Allocating string \"%.*s\" (%u bytes) at %p\n",
-	       n, str, n + 1, chars);
-#endif
+	DEBUG_MALLOC_EXTRA(chars, "string", n + 1);
 	if (chars == NULL) {
 		fprintf(stderr, "Out of memory!\n");
 		exit(74);
@@ -139,3 +182,25 @@ ObjString* obj_string_concat(Obj** objs, Table* strings,
 	return interned != NULL ? interned
 	                        : make_obj_string_copy(objs, strings, str, n, hash);
 }
+
+ObjFunction* make_obj_function(Obj** objs)
+{
+	ObjFunction* proc = (ObjFunction*)allocate_obj(objs, sizeof(ObjFunction), OBJ_FUNCTION);
+	proc->arity = 0;
+	proc->name = NULL;
+	chunk_init(&proc->bytecode);
+	return proc;
+}
+
+ObjNative* make_obj_native(Obj** objects, NativeFn function)
+{
+	ObjNative* native = (ObjNative*)allocate_obj(objects, sizeof(ObjNative), OBJ_NATIVE);
+	native->function = function;
+	return native;
+}
+
+
+#undef DEBUG_MALLOC_EXTRA
+#undef DEBUG_FREE_EXTRA
+#undef DEBUG_MALLOC_OBJ
+#undef DEBUG_FREE_OBJ

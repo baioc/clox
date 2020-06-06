@@ -5,6 +5,8 @@
 #include <assert.h>
 #include <string.h> // memcmp
 
+#include <sgl/core.h> // swap
+
 #include "scanner.h"
 #include "chunk.h"
 #include "value.h"
@@ -21,22 +23,28 @@ typedef struct {
 	int depth;
 } Local;
 
+typedef enum {
+	TYPE_FUNCTION,
+	TYPE_SCRIPT,
+} FunctionType;
+
 typedef struct {
+	ObjFunction* subroutine;
+	FunctionType type;
 	Local locals[UINT8_MAX + 1];
 	int local_count;
 	int scope_depth;
-	Chunk* chunk;
-	Obj** objects;
-	Table* strings;
 } Compiler;
 
 typedef struct {
+	Compiler compiler; // syntax-directed translation
 	Scanner scanner;
 	Token current;
 	Token previous;
 	bool error;
 	bool panic;
-	Compiler compiler; // syntax-directed translation
+	Obj** objects;
+	Table* strings;
 } Parser;
 
 typedef enum {
@@ -70,13 +78,18 @@ static void string(Parser* parser, bool can_assign);
 static void variable(Parser* parser, bool can_assign);
 static void and(Parser* parser, bool can_assign);
 static void or(Parser* parser, bool can_assign);
+static void call(Parser* parser, bool can_assign);
 
 static void declaration(Parser* parser);
 static void statement(Parser* parser);
 static void expression(Parser* parser);
 
+/* @FIXME: pretty random parsing (maybe lexing?) failures: can't parse a variable with these names
+var two; fun fib(n) {}
+*/
+
 static ParseRule rules[] = {
-	[TOKEN_LEFT_PAREN]    = { grouping, NULL,   PREC_NONE       },
+	[TOKEN_LEFT_PAREN]    = { grouping, call,   PREC_CALL       },
 	[TOKEN_RIGHT_PAREN]   = { NULL,     NULL,   PREC_NONE       },
 	[TOKEN_LEFT_BRACE]    = { NULL,     NULL,   PREC_NONE       },
 	[TOKEN_RIGHT_BRACE]   = { NULL,     NULL,   PREC_NONE       },
@@ -118,18 +131,23 @@ static ParseRule rules[] = {
 	[TOKEN_EOF]           = { NULL,     NULL,   PREC_NONE       },
 };
 
-static inline ParseRule* get_rule(TokenType type)
+static ParseRule* get_rule(TokenType type)
 {
 	return &rules[type];
 }
 
-
-static inline void emit_byte(Parser* parser, uint8_t byte)
+static Chunk* current_chunk(const Parser* p)
 {
-	chunk_write(parser->compiler.chunk, byte, parser->previous.line);
+	return &p->compiler.subroutine->bytecode;
 }
 
-static inline void emit_bytes(Parser* parser, uint8_t byte1, uint8_t byte2)
+
+static void emit_byte(Parser* parser, uint8_t byte)
+{
+	chunk_write(current_chunk(parser), byte, parser->previous.line);
+}
+
+static void emit_bytes(Parser* parser, uint8_t byte1, uint8_t byte2)
 {
 	emit_byte(parser, byte1);
 	emit_byte(parser, byte2);
@@ -151,12 +169,12 @@ static void error_at(Parser* parser, const Token* token, const char* message)
 	parser->error = true;
 }
 
-static inline void error(Parser* parser, const char* message)
+static void error(Parser* parser, const char* message)
 {
 	error_at(parser, &parser->previous, message);
 }
 
-static inline void error_at_current(Parser* parser, const char* message)
+static void error_at_current(Parser* parser, const char* message)
 {
 	error_at(parser, &parser->current, message);
 }
@@ -171,7 +189,7 @@ static void advance(Parser* parser)
 	}
 }
 
-static inline bool check(const Parser* parser, TokenType type)
+static bool check(const Parser* parser, TokenType type)
 {
 	return parser->current.type == type;
 }
@@ -220,7 +238,7 @@ static void expression(Parser* parser)
 
 static uint8_t make_constant(Parser* parser, Value value)
 {
-	unsigned constant_idx = chunk_add_constant(parser->compiler.chunk, value);
+	unsigned constant_idx = chunk_add_constant(current_chunk(parser), value);
 	if (constant_idx > UINT8_MAX) {
 		error(parser, "Too many constants in one chunk.");
 		return 0;
@@ -228,22 +246,21 @@ static uint8_t make_constant(Parser* parser, Value value)
 	return constant_idx;
 }
 
-static uint8_t make_string_constant(Parser* p, const char* str, size_t len)
+static uint8_t make_string_constant(Parser* parser, const char* str, size_t len)
 {
 	// check if string isn't registered, and if so return its pool id
-	ObjString* var = table_find_string(p->compiler.strings, str, len,
-	                                   table_hash(str, len));
+	ObjString* var = table_find_string(parser->strings, str, len, table_hash(str, len));
 	if (var != NULL) {
 		Value val;
-		const bool found = table_get(p->compiler.strings, var, &val);
+		const bool found = table_get(parser->strings, var, &val);
 		assert(found);
 		return value_as_number(val);
 	}
 
 	// make string and associate it with its created constant pool id
-	var = make_obj_string(p->compiler.objects, p->compiler.strings, str, len);
-	const uint8_t id = make_constant(p, obj_value((Obj*)var));
-	table_put(p->compiler.strings, var, number_value(id));
+	var = make_obj_string(parser->objects, parser->strings, str, len);
+	const uint8_t id = make_constant(parser, obj_value((Obj*)var));
+	table_put(parser->strings, var, number_value(id));
 	return id;
 }
 
@@ -258,7 +275,7 @@ static void add_local(Parser* p, Token name)
 	local->depth = -1;
 }
 
-static inline bool token_equal(const Token* a, const Token* b)
+static bool token_equal(const Token* a, const Token* b)
 {
 	return a->length == b->length && memcmp(a->start, b->start, a->length) == 0;
 }
@@ -291,26 +308,30 @@ static uint8_t parse_variable(Parser* p, const char* message)
 		return make_string_constant(p, p->previous.start, p->previous.length);
 }
 
-static void define_variable(Parser* p, uint8_t global)
+static void mark_initialized(Parser* p)
 {
 	if (p->compiler.scope_depth > 0)
 		p->compiler.locals[p->compiler.local_count - 1].depth = p->compiler.scope_depth;
-	else
-		emit_bytes(p, OP_DEFINE_GLOBAL, global);
+}
+
+static void define_variable(Parser* parser, uint8_t var)
+{
+	mark_initialized(parser);
+	if (parser->compiler.scope_depth == 0)
+		emit_bytes(parser, OP_DEFINE_GLOBAL, var);
 }
 
 static void variable_declaration(Parser* parser)
 {
-	const uint8_t global = parse_variable(parser, "Expect variable name.");
+	const uint8_t var = parse_variable(parser, "Expect variable name.");
 	if (match(parser, TOKEN_EQUAL))
 		expression(parser);
 	else
 		emit_byte(parser, OP_NIL);
 
 	consume(parser, TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
-	define_variable(parser, global);
+	define_variable(parser, var);
 }
-
 
 static void expression_statement(Parser* parser)
 {
@@ -326,24 +347,39 @@ static void print_statement(Parser* parser)
 	emit_byte(parser, OP_PRINT);
 }
 
+static void return_statement(Parser* parser)
+{
+	if (parser->compiler.type == TYPE_SCRIPT)
+		error(parser, "Cannot return from top-level code.");
+
+	if (match(parser, TOKEN_SEMICOLON)) {
+		emit_byte(parser, OP_NIL);
+		emit_byte(parser, OP_RETURN);
+	} else {
+		expression(parser);
+		consume(parser, TOKEN_SEMICOLON, "Expect ';' after return value.");
+		emit_byte(parser, OP_RETURN);
+	}
+}
+
 static int emit_jump(Parser* parser, uint8_t instruction)
 {
 	emit_byte(parser, instruction);
 	// @NOTE: jump instructions use 16 bit addresses
 	emit_byte(parser, 0xFF);
 	emit_byte(parser, 0xFF);
-	return chunk_size(parser->compiler.chunk) - 2;
+	return chunk_size(current_chunk(parser)) - 2;
 }
 
-static void patch_jump(Parser* p, int address)
+static void patch_jump(Parser* parser, int address)
 {
-	const int stride = chunk_size(p->compiler.chunk) - (address + 2);
+	const int stride = chunk_size(current_chunk(parser)) - (address + 2);
 	if (stride > UINT16_MAX)
-		error(p, "Too much code to jump over.");
+		error(parser, "Too much code to jump over.");
 
-	// @NOTE: this implies the Lox VM is big-endian
-	chunk_set_byte(p->compiler.chunk, address, (stride >> 8) & 0xFF);
-	chunk_set_byte(p->compiler.chunk, address + 1, stride & 0xFF);
+	// @NOTE: the Lox VM is big-endian
+	chunk_set_byte(current_chunk(parser), address, (stride >> 8) & 0xFF);
+	chunk_set_byte(current_chunk(parser), address + 1, stride & 0xFF);
 }
 
 static void if_statement(Parser* parser)
@@ -373,7 +409,7 @@ static void emit_loop(Parser* parser, uint8_t target)
 	emit_byte(parser, OP_LOOP); // like OP_JUMP, but jumps backwards
 
 	// calculate jump length, needs to acknowledge OP_JUMP's 16-bit operand
-	const int stride = chunk_size(parser->compiler.chunk) - target + 2;
+	const int stride = chunk_size(current_chunk(parser)) - target + 2;
 	if (stride > UINT16_MAX)
 		error(parser, "Loop body too large.");
 
@@ -384,7 +420,7 @@ static void emit_loop(Parser* parser, uint8_t target)
 static void while_statement(Parser* parser)
 {
 	// check condition expression
-	const int loop_jump = chunk_size(parser->compiler.chunk);
+	const int loop_jump = chunk_size(current_chunk(parser));
 	consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
 	expression(parser);
 	consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
@@ -410,7 +446,7 @@ static void block(Parser* parser)
 	consume(parser, TOKEN_RIGHT_BRACE, "Expect '}' after block.");
 }
 
-static inline void scope_begin(Parser* parser)
+static void scope_begin(Parser* parser)
 {
 	parser->compiler.scope_depth++;
 }
@@ -428,6 +464,71 @@ static void scope_end(Parser* p)
 	}
 }
 
+static void compile_begin(Compiler* compiler, FunctionType type, Obj** objects)
+{
+	// initialize compilation context
+	compiler->subroutine = make_obj_function(objects);
+	compiler->type = type;
+	compiler->local_count = 0;
+	compiler->scope_depth = 0;
+
+	// reserve stack slot 0 (with a voldemort name so it can't be referred to)
+	Local* local = &compiler->locals[compiler->local_count++];
+	local->depth = 0;
+	local->name.start = "";
+	local->name.length = 0;
+}
+
+static ObjFunction* compile_end(Parser* parser)
+{
+	// @FIXME: even when there's a return, [OP_NIL OP_RETURN] are emitted
+	emit_byte(parser, OP_NIL);
+	emit_byte(parser, OP_RETURN);
+
+#ifdef DEBUG_PRINT_CODE
+	if (!parser->error) {
+		const ObjFunction* proc = parser->compiler.subroutine;
+		disassemble_chunk(current_chunk(parser), proc->name == NULL ? "<script>" : proc->name->chars);
+	}
+#endif
+
+	return parser->compiler.subroutine;
+}
+
+static void function(Parser* p, FunctionType type)
+{
+	// each function has its specific compiler information (and name)
+	Compiler compiler;
+	compile_begin(&compiler, type, p->objects);
+	compiler.subroutine->name = make_obj_string(p->objects, p->strings,
+	                                            p->previous.start, p->previous.length);
+	swap(&p->compiler, &compiler, sizeof(Compiler));
+
+	// formal argument list
+	scope_begin(p);
+	consume(p, TOKEN_LEFT_PAREN, "Expect '(' after function name.");
+	if (!check(p, TOKEN_RIGHT_PAREN)) {
+		do {
+			p->compiler.subroutine->arity++;
+			if (p->compiler.subroutine->arity > 255) {
+				error_at_current(p, "Cannot have more than 255 parameters.");
+			}
+			const uint8_t param = parse_variable(p, "Expect parameter name.");
+			define_variable(p, param);
+		} while (match(p, TOKEN_COMMA));
+	}
+	consume(p, TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
+
+	// procedure body
+	consume(p, TOKEN_LEFT_BRACE, "Expect '{' before function body.");
+	block(p);
+
+	// create the function object and restore enclosing compilation context
+	ObjFunction* function = compile_end(p);
+	swap(&p->compiler, &compiler, sizeof(Compiler));
+	emit_bytes(p, OP_CONSTANT, make_constant(p, obj_value((Obj*)function)));
+}
+
 static void for_statement(Parser* parser)
 {
 	scope_begin(parser);
@@ -442,7 +543,7 @@ static void for_statement(Parser* parser)
 		expression_statement(parser);
 
 	// condition checking
-	int loop_jump = chunk_size(parser->compiler.chunk);
+	int loop_jump = chunk_size(current_chunk(parser));
 	int break_jump = -1;
 	if (!match(parser, TOKEN_SEMICOLON)) {
 		expression(parser);
@@ -458,7 +559,7 @@ static void for_statement(Parser* parser)
 		// increment is compiled before the actual body, so first must jump
 		const int body_jump = emit_jump(parser, OP_JUMP);
 		// this is the actual increment code
-		const int increment_jump = chunk_size(parser->compiler.chunk);
+		const int increment_jump = chunk_size(current_chunk(parser));
 		expression(parser);
 		emit_byte(parser, OP_POP);
 		consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after for clauses.");
@@ -473,7 +574,7 @@ static void for_statement(Parser* parser)
 	emit_loop(parser, loop_jump);
 
 	// the loop exit is only generated when there's a condition
-	// @NOTE: this makes `for (;;)` faster than `while (true)`
+	// @NOTE: this makes for (;;) faster than while (true)
 	if (break_jump >= 0) {
 		patch_jump(parser, break_jump);
 		emit_byte(parser, OP_POP);
@@ -486,6 +587,8 @@ static void statement(Parser* parser)
 {
 	if (match(parser, TOKEN_PRINT)) {
 		print_statement(parser);
+	} else if (match(parser, TOKEN_RETURN)) {
+		return_statement(parser);
 	} else if (match(parser, TOKEN_LEFT_BRACE)) {
 		scope_begin(parser);
 		block(parser);
@@ -499,6 +602,17 @@ static void statement(Parser* parser)
 	} else {
 		expression_statement(parser);
 	}
+}
+
+/* @FIXME: function references during compilation: can't call a function from another
+fun bar(lhs, rhs) { return lhs + rhs; } { fun foo(a, b) { print(bar(a,b) == 3); } var x = 1; var y = bar(x, x); foo(x, y); }
+*/
+static void function_declaration(Parser* parser)
+{
+	const uint8_t var = parse_variable(parser, "Expect function name.");
+	mark_initialized(parser); // to allow recursion
+	function(parser, TYPE_FUNCTION);
+	define_variable(parser, var);
 }
 
 static void and(Parser* parser, bool can_assign)
@@ -552,6 +666,8 @@ static void declaration(Parser* parser)
 {
 	if (match(parser, TOKEN_VAR))
 		variable_declaration(parser);
+	else if (match(parser, TOKEN_FUN))
+		function_declaration(parser);
 	else
 		statement(parser);
 
@@ -580,7 +696,7 @@ static void unary(Parser* parser, bool can_assign)
 
 	// emit instruction defined by operator
 	switch (operator_type) {
-		case TOKEN_BANG:  emit_byte(parser, OP_NOT); break;
+		case TOKEN_BANG: emit_byte(parser, OP_NOT); break;
 		case TOKEN_MINUS: emit_byte(parser, OP_NEGATE); break;
 	}
 }
@@ -595,25 +711,45 @@ static void binary(Parser* parser, bool can_assign)
 
 	// emit operator instruction
 	switch (operator_type) {
-		case TOKEN_BANG_EQUAL:    emit_bytes(parser, OP_EQUAL, OP_NOT); break;
-		case TOKEN_EQUAL_EQUAL:   emit_byte(parser, OP_EQUAL); break;
-		case TOKEN_GREATER:       emit_byte(parser, OP_GREATER); break;
+		case TOKEN_BANG_EQUAL: emit_bytes(parser, OP_EQUAL, OP_NOT); break;
+		case TOKEN_EQUAL_EQUAL: emit_byte(parser, OP_EQUAL); break;
+		case TOKEN_GREATER: emit_byte(parser, OP_GREATER); break;
 		case TOKEN_GREATER_EQUAL: emit_bytes(parser, OP_LESS, OP_NOT); break;
-		case TOKEN_LESS:          emit_byte(parser, OP_LESS); break;
-		case TOKEN_LESS_EQUAL:    emit_bytes(parser, OP_GREATER, OP_NOT); break;
-		case TOKEN_PLUS:          emit_byte(parser, OP_ADD); break;
-		case TOKEN_MINUS:         emit_byte(parser, OP_SUBTRACT); break;
-		case TOKEN_STAR:          emit_byte(parser, OP_MULTIPLY); break;
-		case TOKEN_SLASH:         emit_byte(parser, OP_DIVIDE); break;
+		case TOKEN_LESS: emit_byte(parser, OP_LESS); break;
+		case TOKEN_LESS_EQUAL: emit_bytes(parser, OP_GREATER, OP_NOT); break;
+		case TOKEN_PLUS: emit_byte(parser, OP_ADD); break;
+		case TOKEN_MINUS: emit_byte(parser, OP_SUBTRACT); break;
+		case TOKEN_STAR: emit_byte(parser, OP_MULTIPLY); break;
+		case TOKEN_SLASH: emit_byte(parser, OP_DIVIDE); break;
 	}
+}
+
+static uint8_t argument_list(Parser* parser)
+{
+	uint8_t argc = 0;
+	if (!check(parser, TOKEN_RIGHT_PAREN)) {
+		do {
+			expression(parser);
+			++argc;
+			if (argc >= 255) error(parser, "Cannot have more than 255 arguments.");
+		} while (match(parser, TOKEN_COMMA));
+	}
+	consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after arguments.");
+	return argc;
+}
+
+static void call(Parser* parser, bool can_assign)
+{
+	const uint8_t argc = argument_list(parser);
+	emit_bytes(parser, OP_CALL, argc);
 }
 
 static void literal(Parser* parser, bool can_assign)
 {
 	switch (parser->previous.type) {
 		case TOKEN_FALSE: emit_byte(parser, OP_FALSE); break;
-		case TOKEN_NIL:   emit_byte(parser, OP_NIL); break;
-		case TOKEN_TRUE:  emit_byte(parser, OP_TRUE); break;
+		case TOKEN_NIL: emit_byte(parser, OP_NIL); break;
+		case TOKEN_TRUE: emit_byte(parser, OP_TRUE); break;
 	}
 }
 
@@ -666,51 +802,34 @@ static void variable(Parser* parser, bool can_assign)
 	named_variable(parser, &parser->previous, can_assign);
 }
 
-static inline void end_compilation(Parser* parser)
-{
-	emit_byte(parser, OP_RETURN);
-}
-
-static void debug_print_compiled(const Parser* parser)
-{
-#ifdef DEBUG_PRINT_CODE
-	if (!parser->error)
-		disassemble_chunk(parser->compiler.chunk, "code");
-#endif
-}
-
 static void register_string_constant(const ObjString* key, Value* val, void* p)
 {
 	const uint8_t id = make_constant((Parser*)p, obj_value((Obj*)key));
 	*val = number_value(id);
 }
 
-bool compile(const char* source, Chunk* chunk, Obj** objects, Table* strings)
+ObjFunction* compile(const char* source, Obj** objects, Table* strings)
 {
+	// begin compilation
 	Parser parser = {
 		.error = false,
 		.panic = false,
-		.compiler = {
-			.local_count = 0,
-			.scope_depth = 0,
-			.chunk = chunk,
-			.objects = objects,
-			.strings = strings,
-		},
+		.objects = objects,
+		.strings = strings,
 	};
+	compile_begin(&parser.compiler, TYPE_SCRIPT, objects);
 
 	// register any previously interned strings into the chunk's constant pool
 	table_for_each(strings, register_string_constant, &parser);
 
+	// setup scanner to have both .current and .next
 	scanner_start(&parser.scanner, source);
-	advance(&parser); // reads the first token
+	advance(&parser);
 
 	// a "compilation unit" that translates into a chunk is a sequence of decls.
 	while (!match(&parser, TOKEN_EOF))
 		declaration(&parser);
 
-	end_compilation(&parser);
-	debug_print_compiled(&parser);
-
-	return !parser.error;
+	ObjFunction* proc = compile_end(&parser);
+	return parser.error ? NULL : proc;
 }
