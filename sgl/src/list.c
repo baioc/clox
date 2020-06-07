@@ -39,7 +39,7 @@ extern inline bool list_empty(const list_t* list);
 inline void* list_ref(const list_t* list, index_t index)
 {
 	assert(0 <= index);
-	assert(index < list->capacity);
+	assert(index < list->length);
 	return list->data + list->elem_size * index;
 }
 
@@ -61,7 +61,7 @@ err_t list_append(list_t* list, const void* element)
 	}
 
 	// append copy to the end of the list
-	byte_t* end = list_ref(list, list->length);
+	byte_t* end = list->data + list->elem_size * list->length;
 	memcpy(end, element, list->elem_size);
 	list->length++;
 
@@ -97,11 +97,12 @@ void list_remove(list_t* list, index_t index, void* sink)
 	// send copy to output
 	const byte_t* source = list_ref(list, index);
 	memcpy(sink, source, list->elem_size);
-	list->length--;
 
 	// swap "removed" (free space) forward
-	for (index_t i = index; i < list->length; ++i)
+	for (index_t i = index; i < list->length - 1; ++i)
 		list_swap(list, i, i + 1);
+
+	list->length--;
 }
 
 extern inline void list_pop(list_t* list, void* sink);
