@@ -3,9 +3,9 @@
 
 // Lazy Lox tokenizer.
 typedef struct {
+	int line;
 	const char* start;
 	const char* current;
-	int line;
 } Scanner;
 
 // Enumeration of valid Lox tokens, plus some extra signaling tokens.
@@ -50,8 +50,8 @@ typedef enum {
 // A simple token structure.
 typedef struct Token {
 	TokenType type;
-	const char* start;
 	int length;
+	const char* start;
 	int line;
 } Token;
 

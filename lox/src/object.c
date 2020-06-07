@@ -11,7 +11,7 @@
 #include "chunk.h"
 
 
-#ifdef DEBUG_DYNAMIC_MEMORY
+#if DEBUG_DYNAMIC_MEMORY
 #	define DEBUG_FREE_OBJ(obj, type, size) \
 		printf(";;; Freeing %s (%u bytes) at %p\n", #type, size, obj)
 
@@ -28,7 +28,7 @@
 		printf(";;; Allocating %s (%u bytes) at %p\n", type_str, size, extra_ptr)
 
 #else
-#	define DEBUG_FREE_OBJ(obj, type) ((void)0)
+#	define DEBUG_FREE_OBJ(obj, type, size) ((void)0)
 #	define DEBUG_MALLOC_OBJ(obj, type, size) ((void)0)
 #	define DEBUG_FREE_EXTRA(obj, extra, type_str, size) ((void)0)
 #	define DEBUG_MALLOC_EXTRA(extra_ptr, type_str, size) ((void)0)

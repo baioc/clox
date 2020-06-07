@@ -5,6 +5,7 @@
 
 #include "common.h" // bool"
 
+
 // Forward declaration due to cyclic dependencies.
 typedef struct Obj Obj;
 typedef struct ObjString ObjString;

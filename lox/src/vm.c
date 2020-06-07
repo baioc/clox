@@ -13,10 +13,22 @@
 #include "compiler.h"
 #include "table.h"
 #include "common.h"
-#ifdef DEBUG_TRACE_EXECUTION
+#if DEBUG_TRACE_EXECUTION
 #	include "debug.h" // disassemble_instruction
 #endif
 
+
+int constant_add(ValueArray* constants, Value value)
+{
+	const int index = value_array_size(constants);
+	value_array_write(constants, value);
+	return index;
+}
+
+Value constant_get(const ValueArray* constants, uint8_t index)
+{
+	return value_array_get(constants, index);
+}
 
 static void reset_stack(VM* vm)
 {
@@ -34,17 +46,19 @@ static Value native_clock(int argc, Value argv[])
 void vm_init(VM* vm)
 {
 	reset_stack(vm);
-	vm->objects = NULL;
-	table_init(&vm->globals);
-	table_init(&vm->strings);
+	vm->data.objects = NULL;
+	value_array_init(&vm->data.constants);
+	table_init(&vm->data.strings);
+	table_init(&vm->data.globals);
 	define_native(vm, "clock", native_clock);
 }
 
 void vm_destroy(VM* vm)
 {
-	table_destroy(&vm->strings);
-	table_destroy(&vm->globals);
-	free_objects(&vm->objects);
+	table_destroy(&vm->data.globals);
+	table_destroy(&vm->data.strings);
+	value_array_destroy(&vm->data.constants);
+	free_objects(&vm->data.objects);
 }
 
 static void push(VM* vm, Value value)
@@ -74,7 +88,7 @@ static void concatenate_strings(VM* vm)
 {
 	const ObjString* b = value_as_string(pop(vm));
 	const ObjString* a = value_as_string(pop(vm));
-	ObjString* c = obj_string_concat(&vm->objects, &vm->strings, a, b);
+	ObjString* c = obj_string_concat(&vm->data.objects, &vm->data.strings, a, b);
 	push(vm, obj_value((Obj*)c));
 }
 
@@ -103,9 +117,11 @@ static void runtime_error(VM* vm, const char* format, ...)
 // Should only be called during vm_init() !
 static void define_native(VM* vm, const char* name, NativeFn function)
 {
-	push(vm, obj_value((Obj*)make_obj_string(&vm->objects, &vm->strings, name, strlen(name))));
-	push(vm, obj_value((Obj*)make_obj_native(&vm->objects, function)));
-	table_put(&vm->globals, value_as_string(vm->stack[0]), vm->stack[1]);
+	push(vm,
+	     obj_value((Obj*)make_obj_string(&vm->data.objects, &vm->data.strings, name, strlen(name))));
+	push(vm,
+	     obj_value((Obj*)make_obj_native(&vm->data.objects, function)));
+	table_put(&vm->data.globals, value_as_string(vm->stack[0]), vm->stack[1]);
 	pop(vm);
 	pop(vm);
 }
@@ -150,7 +166,7 @@ FAIL:
 
 static void debug_trace_run(const VM* vm, const CallFrame* frame)
 {
-#ifdef DEBUG_TRACE_EXECUTION
+#if DEBUG_TRACE_EXECUTION
 	printf(" /------> ");
 	for (const Value* slot = vm->stack; slot < vm->stack_pointer; slot++) {
 		printf("[ ");
@@ -158,7 +174,9 @@ static void debug_trace_run(const VM* vm, const CallFrame* frame)
 		printf(" ]");
 	}
 	printf("\n");
-	disassemble_instruction(&frame->subroutine->bytecode, frame->program_counter);
+	disassemble_instruction(&frame->subroutine->bytecode,
+	                        &vm->data.constants,
+	                        frame->program_counter);
 #endif
 }
 
@@ -167,12 +185,11 @@ static InterpretResult run(VM* vm)
 	CallFrame* frame = &vm->frames[vm->frame_count - 1];
 
 	#define READ_BYTE() chunk_get_byte(&frame->subroutine->bytecode, frame->program_counter++)
-	#define READ_CONSTANT() chunk_get_constant(&frame->subroutine->bytecode, READ_BYTE())
+	#define READ_CONSTANT() constant_get(&vm->data.constants, READ_BYTE())
 	#define READ_SHORT() \
 		(frame->program_counter += 2, \
 		 (chunk_get_byte(&frame->subroutine->bytecode, frame->program_counter - 2) << 8) \
 		| chunk_get_byte(&frame->subroutine->bytecode, frame->program_counter - 1))
-	#define READ_STRING() value_as_string(READ_CONSTANT())
 	#define BINARY_OP(type_value, op) do { \
 		if (!value_is_number(peek(vm, 0)) || !value_is_number(peek(vm, 1))) { \
 			runtime_error(vm, "Operands must be numbers."); \
@@ -188,7 +205,7 @@ static InterpretResult run(VM* vm)
 		debug_trace_run(vm, frame);
 		const uint8_t instruction = READ_BYTE();
 
-		// @TODO: benchmark manual jump table with computed gotos
+		// @TODO: benchmark manual jump table optimized with computed gotos
 		switch (instruction) {
 			case OP_CONSTANT: push(vm, READ_CONSTANT()); break;
 			case OP_NIL: push(vm, nil_value()); break;
@@ -207,9 +224,12 @@ static InterpretResult run(VM* vm)
 				break;
 			}
 			case OP_GET_GLOBAL: {
-				const ObjString* name = READ_STRING();
+				/* @XXX: optimize access to global variables via statically
+				computed array indexes instead of hash table name lookups: see
+				http://craftinginterpreters.com/global-variables.html ex. 2. */
+				const ObjString* name = value_as_string(READ_CONSTANT());
 				Value value;
-				if (!table_get(&vm->globals, name, &value)) {
+				if (!table_get(&vm->data.globals, name, &value)) {
 					runtime_error(vm, "Undefined variable '%s'.", name->chars);
 					return INTERPRET_RUNTIME_ERROR;
 				}
@@ -217,15 +237,15 @@ static InterpretResult run(VM* vm)
 				break;
 			}
 			case OP_DEFINE_GLOBAL: {
-				const ObjString* name = READ_STRING();
-				table_put(&vm->globals, name, peek(vm, 0));
+				const ObjString* name = value_as_string(READ_CONSTANT());
+				table_put(&vm->data.globals, name, peek(vm, 0));
 				pop(vm);
 				break;
 			}
 			case OP_SET_GLOBAL: {
-				ObjString* name = READ_STRING();
-				if (!table_put(&vm->globals, name, peek(vm, 0))) {
-					table_delete(&vm->globals, name);
+				ObjString* name = value_as_string(READ_CONSTANT());
+				if (!table_put(&vm->data.globals, name, peek(vm, 0))) {
+					table_delete(&vm->data.globals, name);
 					runtime_error(vm, "Undefined variable '%s'.", name->chars);
 					return INTERPRET_RUNTIME_ERROR;
 				}
@@ -307,7 +327,6 @@ static InterpretResult run(VM* vm)
 	}
 
 	#undef BINARY_OP
-	#undef READ_STRING
 	#undef READ_SHORT
 	#undef READ_CONSTANT
 	#undef READ_BYTE
@@ -315,8 +334,7 @@ static InterpretResult run(VM* vm)
 
 InterpretResult vm_interpret(VM* vm, const char* source)
 {
-	// compile and store subroutine in the first stack slot (compiler-reserved)
-	ObjFunction* program = compile(source, &vm->objects, &vm->strings);
+	ObjFunction* program = compile(source, &vm->data);
 	if (program == NULL) return INTERPRET_COMPILE_ERROR;
 
 	// setup initial (i.e. main) call frame

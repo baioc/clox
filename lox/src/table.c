@@ -10,9 +10,9 @@
 
 
 struct key {
-	const char* str;
-	size_t length;
 	hash_t hash;
+	size_t length;
+	const char* str;
 };
 
 struct val {

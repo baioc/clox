@@ -4,7 +4,6 @@
 #include <sgl/list.h>
 
 #include "common.h" // uint8_t, intptr_t
-#include "value.h" // Value, ValueArray
 
 
 // Lox VM opcodes, which must must fit into an uint8_t.
@@ -41,7 +40,6 @@ enum OpCode {
 typedef struct {
 	list_t code;
 	list_t lines;
-	ValueArray constants;
 } Chunk;
 
 
@@ -65,14 +63,5 @@ void chunk_set_byte(const Chunk* chunk, intptr_t offset, uint8_t value);
 
 // Gets the line that originated the bytecode at OFFSET inside the CHUNK.
 int chunk_get_line(const Chunk* chunk, intptr_t offset);
-
-/** Adds a constant VALUE to the CHUNK's constant pool.
- * Returns the pool index where it was added for later access.
- * @NOTE: Because OP_CONSTANT only uses a single byte for its operand, a
- * constant pool has a maximum capacity of 256 elements.*/
-int chunk_add_constant(Chunk* chunk, Value value);
-
-// Gets the constant value added to INDEX of the CHUNK's constant pool.
-Value chunk_get_constant(const Chunk* chunk, uint8_t index);
 
 #endif // CLOX_CHUNK_H

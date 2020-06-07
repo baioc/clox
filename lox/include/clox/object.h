@@ -30,9 +30,9 @@ struct ObjString {
 
 typedef struct {
 	struct Obj obj;
-	Chunk bytecode;
-	int arity;
 	ObjString* name;
+	int arity;
+	Chunk bytecode;
 } ObjFunction;
 
 typedef Value (*NativeFn)(int arc, Value argv[]);

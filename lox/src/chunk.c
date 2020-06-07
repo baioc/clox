@@ -1,11 +1,10 @@
 #include "chunk.h"
 
-#include <limits.h>
 #include <assert.h>
 
 #include <sgl/list.h>
 
-#include "value.h"
+#include "common.h" // intptr_t, UINT8_MAX
 
 
 struct line {
@@ -19,12 +18,10 @@ void chunk_init(Chunk* chunk)
 	assert(OP_CODE_MAX <= UINT8_MAX);
 	list_init(&chunk->code, 0, sizeof(uint8_t), NULL);
 	list_init(&chunk->lines, 0, sizeof(struct line), NULL);
-	value_array_init(&chunk->constants);
 }
 
 void chunk_destroy(Chunk* chunk)
 {
-	value_array_destroy(&chunk->constants);
 	list_destroy(&chunk->lines);
 	list_destroy(&chunk->code);
 }
@@ -71,16 +68,4 @@ int chunk_get_line(const Chunk* chunk, intptr_t offset)
 	const struct line key = { .address = offset };
 	const long index = list_search(lines, &key, linecmp);
 	return index >= 0 ? ((struct line*)list_ref(lines, index))->number : index;
-}
-
-int chunk_add_constant(Chunk* chunk, Value value)
-{
-	const int index = value_array_size(&chunk->constants);
-	value_array_write(&chunk->constants, value);
-	return index;
-}
-
-Value chunk_get_constant(const Chunk* chunk, uint8_t index)
-{
-	return value_array_get(&chunk->constants, index);
 }

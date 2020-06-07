@@ -5,13 +5,16 @@
 #include <stddef.h> // size_t, NULL
 #include <stdint.h> // uint8_t, intptr_t
 
-// Prints bytecode when its compilation finishes.
-#define DEBUG_PRINT_CODE
+// Prints each token as it is lexed.
+#define DEBUG_PRINT_LEXED 0
+
+// Prints bytecode chunks when their compilation finishes.
+#define DEBUG_PRINT_CODE 1
 
 // Prints opcodes and the stack during VM execution.
-#define DEBUG_TRACE_EXECUTION
+#define DEBUG_TRACE_EXECUTION 0
 
-// Logs dynamic memory management during the Lox runtime.
-#define DEBUG_DYNAMIC_MEMORY
+// Prints dynamic memory management during the Lox runtime.
+#define DEBUG_DYNAMIC_MEMORY 0
 
 #endif // CLOX_COMMON_H

@@ -2,7 +2,10 @@
 
 #include <string.h> // strlen, memcmp
 
-#include "common.h" // bool
+#include "common.h" // bool, DEBUG_PRINT_LEXED
+#if DEBUG_PRINT_LEXED
+#	include "stdio.h"
+#endif
 
 
 void scanner_start(Scanner* scanner, const char* source)
@@ -192,7 +195,7 @@ static Token scan_identifier(Scanner* scanner)
 	return make_token(scanner, identifier_type(scanner));
 }
 
-Token scan_token(Scanner* scanner)
+static Token scan_token_(Scanner* scanner)
 {
 	skip_whitespace(scanner);
 	scanner->start = scanner->current;
@@ -231,4 +234,15 @@ Token scan_token(Scanner* scanner)
 	}
 
 	return error_token(scanner, "Unexpected character.");
+}
+
+Token scan_token(Scanner* scanner)
+{
+#if DEBUG_PRINT_LEXED
+	Token tok = scan_token_(scanner);
+	printf("> Lexed <%d> token '%.*s'\n", tok.type, tok.length, tok.start);
+	return tok;
+#else
+	return scan_token_(scanner);
+#endif
 }

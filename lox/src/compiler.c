@@ -2,7 +2,6 @@
 
 #include <stdio.h> // fprintf
 #include <stdlib.h> // strtod
-#include <assert.h>
 #include <string.h> // memcmp
 
 #include <sgl/core.h> // swap
@@ -13,7 +12,8 @@
 #include "object.h"
 #include "table.h"
 #include "common.h" // uint8_t, UINT8_MAX, UINT16_MAX, DEBUG_PRINT_CODE
-#ifdef DEBUG_PRINT_CODE
+#include "vm.h" // constant_add
+#if DEBUG_PRINT_CODE
 #	include "debug.h" // disassemble_chunk
 #endif
 
@@ -29,11 +29,11 @@ typedef enum {
 } FunctionType;
 
 typedef struct {
-	ObjFunction* subroutine;
 	FunctionType type;
-	Local locals[UINT8_MAX + 1];
-	int local_count;
+	ObjFunction* subroutine;
 	int scope_depth;
+	int local_count;
+	Local locals[UINT8_MAX + 1];
 } Compiler;
 
 typedef struct {
@@ -43,8 +43,7 @@ typedef struct {
 	Token previous;
 	bool error;
 	bool panic;
-	Obj** objects;
-	Table* strings;
+	Environment* data;
 } Parser;
 
 typedef enum {
@@ -234,7 +233,7 @@ static void expression(Parser* parser)
 
 static uint8_t make_constant(Parser* parser, Value value)
 {
-	unsigned constant_idx = chunk_add_constant(current_chunk(parser), value);
+	unsigned constant_idx = constant_add(&parser->data->constants, value);
 	if (constant_idx > UINT8_MAX) {
 		error(parser, "Too many constants in one chunk.");
 		return 0;
@@ -242,27 +241,26 @@ static uint8_t make_constant(Parser* parser, Value value)
 	return constant_idx;
 }
 
-static uint8_t make_string_constant(Parser* parser, const char* str, size_t len)
+static uint8_t make_string_constant(Parser* parser, const char* chars, size_t len)
 {
-	// check if string isn't registered, and if so return its pool id
-	ObjString* var = table_find_string(parser->strings, str, len, table_hash(str, len));
-	if (var != NULL) {
-		Value val;
-		const bool found = table_get(parser->strings, var, &val);
-		assert(found);
-		return value_as_number(val);
-	}
+	// build a string object (or find it already interned)
+	ObjString* str = make_obj_string(&parser->data->objects, &parser->data->strings, chars, len);
 
-	// make string and associate it with its created constant pool id
-	var = make_obj_string(parser->objects, parser->strings, str, len);
-	const uint8_t id = make_constant(parser, obj_value((Obj*)var));
-	table_put(parser->strings, var, number_value(id));
+	// check if this string was previously registered and if so, return its id
+	Value index = nil_value();
+	table_get(&parser->data->strings, str, &index);
+	if (!value_is_nil(index))
+		return (uint8_t)value_as_number(index);
+
+	// associate string with its created constant pool id
+	const uint8_t id = make_constant(parser, obj_value((Obj*)str));
+	table_put(&parser->data->strings, str, number_value(id));
 	return id;
 }
 
 static void add_local(Parser* p, Token name)
 {
-	if (p->compiler.local_count >= UINT8_MAX + 1) {
+	if (p->compiler.local_count > UINT8_MAX) {
 		error(p, "Too many local variables in function.");
 		return;
 	}
@@ -460,10 +458,10 @@ static void scope_end(Parser* p)
 	}
 }
 
-static void compile_begin(Compiler* compiler, FunctionType type, Obj** objects)
+static void compile_begin(Compiler* compiler, FunctionType type, Environment* data)
 {
 	// initialize compilation context
-	compiler->subroutine = make_obj_function(objects);
+	compiler->subroutine = make_obj_function(&data->objects);
 	compiler->type = type;
 	compiler->local_count = 0;
 	compiler->scope_depth = 0;
@@ -481,10 +479,12 @@ static ObjFunction* compile_end(Parser* parser)
 	emit_byte(parser, OP_NIL);
 	emit_byte(parser, OP_RETURN);
 
-#ifdef DEBUG_PRINT_CODE
+#if DEBUG_PRINT_CODE
 	if (!parser->error) {
 		const ObjFunction* proc = parser->compiler.subroutine;
-		disassemble_chunk(current_chunk(parser), proc->name == NULL ? "<script>" : proc->name->chars);
+		disassemble_chunk(current_chunk(parser),
+		                  &parser->data->constants,
+		                  proc->name == NULL ? "<script>" : proc->name->chars);
 	}
 #endif
 
@@ -493,34 +493,35 @@ static ObjFunction* compile_end(Parser* parser)
 
 static void function(Parser* p, FunctionType type)
 {
-	// each function has its specific compiler information (and name)
+	// each function has its specific compiler information and name
 	Compiler compiler;
-	compile_begin(&compiler, type, p->objects);
-	compiler.subroutine->name = make_obj_string(p->objects, p->strings,
+	compile_begin(&compiler, type, p->data);
+	compiler.subroutine->name = make_obj_string(&p->data->objects, &p->data->strings,
 	                                            p->previous.start, p->previous.length);
+
+	// temporarily swap local with "current" compiler
 	swap(&p->compiler, &compiler, sizeof(Compiler));
 
-	// formal argument list
+	// compile formal argument list
 	scope_begin(p);
 	consume(p, TOKEN_LEFT_PAREN, "Expect '(' after function name.");
 	if (!check(p, TOKEN_RIGHT_PAREN)) {
 		do {
-			p->compiler.subroutine->arity++;
-			if (p->compiler.subroutine->arity > 255) {
-				error_at_current(p, "Cannot have more than 255 parameters.");
-			}
 			const uint8_t param = parse_variable(p, "Expect parameter name.");
 			define_variable(p, param);
+			p->compiler.subroutine->arity++;
+			if (p->compiler.subroutine->arity > 255)
+				error_at_current(p, "Cannot have more than 255 parameters.");
 		} while (match(p, TOKEN_COMMA));
 	}
 	consume(p, TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
 
-	// procedure body
+	// compile procedure body
 	consume(p, TOKEN_LEFT_BRACE, "Expect '{' before function body.");
 	block(p);
-
-	// create the function object and restore enclosing compilation context
 	ObjFunction* function = compile_end(p);
+
+	// restore enclosing compilation context and emit function obj definition
 	swap(&p->compiler, &compiler, sizeof(Compiler));
 	emit_bytes(p, OP_CONSTANT, make_constant(p, obj_value((Obj*)function)));
 }
@@ -600,9 +601,6 @@ static void statement(Parser* parser)
 	}
 }
 
-/* @FIXME: function references during compilation: can't call a function from another
-fun bar(lhs, rhs) { return lhs + rhs; } { fun foo(a, b) { print(bar(a,b) == 3); } var x = 1; var y = bar(x, x); foo(x, y); }
-*/
 static void function_declaration(Parser* parser)
 {
 	const uint8_t var = parse_variable(parser, "Expect function name.");
@@ -804,19 +802,18 @@ static void register_string_constant(const ObjString* key, Value* val, void* p)
 	*val = number_value(id);
 }
 
-ObjFunction* compile(const char* source, Obj** objects, Table* strings)
+ObjFunction* compile(const char* source, Environment* data)
 {
 	// begin compilation
 	Parser parser = {
 		.error = false,
 		.panic = false,
-		.objects = objects,
-		.strings = strings,
+		.data = data,
 	};
-	compile_begin(&parser.compiler, TYPE_SCRIPT, objects);
+	compile_begin(&parser.compiler, TYPE_SCRIPT, data);
 
 	// register any previously interned strings into the chunk's constant pool
-	table_for_each(strings, register_string_constant, &parser);
+	table_for_each(&data->strings, register_string_constant, &parser);
 
 	// setup scanner to have both .current and .next
 	scanner_start(&parser.scanner, source);
