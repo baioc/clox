@@ -84,10 +84,6 @@ static void declaration(Parser* parser);
 static void statement(Parser* parser);
 static void expression(Parser* parser);
 
-/* @FIXME: pretty random parsing (maybe lexing?) failures: can't parse a variable with these names
-var two; fun fib(n) {}
-*/
-
 static ParseRule rules[] = {
 	[TOKEN_LEFT_PAREN]    = { grouping, call,   PREC_CALL       },
 	[TOKEN_RIGHT_PAREN]   = { NULL,     NULL,   PREC_NONE       },

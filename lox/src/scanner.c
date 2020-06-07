@@ -180,13 +180,12 @@ static TokenType identifier_type(const Scanner* s)
 			break;
 		case 'v': return check_keyword(s, 1, "ar", 2, TOKEN_VAR);
 		case 'w': return check_keyword(s, 1, "hile", 4, TOKEN_WHILE);
-		default:  return TOKEN_IDENTIFIER;
 	}
+	return TOKEN_IDENTIFIER;
 }
 
 static Token scan_identifier(Scanner* scanner)
 {
-	char lookahead;
 	while (is_alpha(peek(scanner)) || is_digit(peek(scanner)))
 		advance(scanner);
 
@@ -201,7 +200,7 @@ Token scan_token(Scanner* scanner)
 	if (at_end(scanner)) return make_token(scanner, TOKEN_EOF);
 
 	const char c = advance(scanner);
-	if (is_alpha(c))  return scan_identifier(scanner);
+	if (is_alpha(c)) return scan_identifier(scanner);
 	else if (is_digit(c)) return scan_number(scanner);
 
 	switch (c) {
