@@ -9,7 +9,7 @@
 
 // A data container for the information needed during subroutine execution.
 typedef struct {
-	ObjFunction* subroutine;
+	ObjClosure* subroutine;
 	intptr_t program_counter;
 	Value* frame_pointer;
 } CallFrame;
@@ -17,6 +17,7 @@ typedef struct {
 // Environment structure acting as the VM's heap and data segments.
 typedef struct {
 	Obj* objects;
+	ObjUpvalue* open_upvalues;
 	ValueArray constants;
 	Table strings;
 	Table globals;

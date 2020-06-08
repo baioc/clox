@@ -21,19 +21,27 @@
 typedef struct {
 	Token name;
 	int depth;
+	bool captured;
 } Local;
+
+typedef struct {
+	uint8_t index;
+	bool local;
+} Upvalue;
 
 typedef enum {
 	TYPE_FUNCTION,
 	TYPE_SCRIPT,
 } FunctionType;
 
-typedef struct {
+typedef struct Compiler {
 	FunctionType type;
 	ObjFunction* subroutine;
+	struct Compiler* enclosing;
 	int scope_depth;
 	int local_count;
 	Local locals[UINT8_MAX + 1];
+	Upvalue upvalues[UINT8_MAX + 1];
 } Compiler;
 
 typedef struct {
@@ -267,6 +275,29 @@ static void add_local(Parser* p, Token name)
 	Local* local = &p->compiler.locals[p->compiler.local_count++];
 	local->name = name;
 	local->depth = -1;
+	local->captured = false;
+}
+
+static int add_upvalue(Parser* parser, Compiler* compiler, uint8_t index, bool local)
+{
+	const int upv_count = compiler->subroutine->upvalues;
+
+	// check if upvalue wasn't previously created by another reference
+	for (int i = 0; i < upv_count; ++i) {
+		Upvalue* upvalue = &compiler->upvalues[i];
+		if (upvalue->index == index && upvalue->local == local)
+			return i;
+	}
+
+	if (upv_count > UINT8_MAX) {
+		error(parser, "Too many closure variables in function.");
+		return 0;
+	}
+
+	compiler->upvalues[upv_count].local = local;
+	compiler->upvalues[upv_count].index = index;
+	compiler->subroutine->upvalues++;
+	return upv_count;
 }
 
 static bool token_equal(const Token* a, const Token* b)
@@ -447,15 +478,17 @@ static void scope_begin(Parser* parser)
 
 static void scope_end(Parser* p)
 {
+	#define CHECK_CONTINUE() \
+		(p->compiler.local_count > 0 \
+	  && p->compiler.locals[p->compiler.local_count - 1].depth > p->compiler.scope_depth)
+
 	// reduce scope depth and then pop all locals in the previous scope
-	p->compiler.scope_depth--;
-	while (   p->compiler.local_count > 0
-	       && p->compiler.locals[p->compiler.local_count - 1].depth > p->compiler.scope_depth
-	      ) {
-		// @TODO: optimize scope exit with an instruction to pop all locals
-		emit_byte(p, OP_POP);
-		p->compiler.local_count--;
+	for (p->compiler.scope_depth--; CHECK_CONTINUE(); p->compiler.local_count--) {
+		emit_byte(p, p->compiler.locals[p->compiler.local_count - 1].captured
+		             ? OP_CLOSE_UPVALUE : OP_POP);
 	}
+
+	#undef CHECK_CONTINUE
 }
 
 static void compile_begin(Compiler* compiler, FunctionType type, Environment* data)
@@ -501,6 +534,7 @@ static void function(Parser* p, FunctionType type)
 
 	// temporarily swap local with "current" compiler
 	swap(&p->compiler, &compiler, sizeof(Compiler));
+	p->compiler.enclosing = &compiler;
 
 	// compile formal argument list
 	scope_begin(p);
@@ -523,7 +557,13 @@ static void function(Parser* p, FunctionType type)
 
 	// restore enclosing compilation context and emit function obj definition
 	swap(&p->compiler, &compiler, sizeof(Compiler));
-	emit_bytes(p, OP_CONSTANT, make_constant(p, obj_value((Obj*)function)));
+	emit_bytes(p, OP_CLOSURE, make_constant(p, obj_value((Obj*)function)));
+
+	// capture all upvalues compiled in the closure's compilation context
+	for (int i = 0; i < function->upvalues; ++i) {
+		emit_byte(p, compiler.upvalues[i].local ? 1 : 0);
+		emit_byte(p, compiler.upvalues[i].index);
+	}
 }
 
 static void for_statement(Parser* parser)
@@ -756,27 +796,49 @@ static void string(Parser* parser, bool can_assign)
 	emit_bytes(parser, OP_CONSTANT, id);
 }
 
-static int resolve_local(Parser* p, const Token* name)
+static int resolve_local(Parser* parser, const Compiler* compiler, const Token* name)
 {
 	// name lookup going from the top to the bottom of the locals stack
-	for (int i = p->compiler.local_count - 1; i >= 0; --i) {
-		const Local* local = &p->compiler.locals[i];
+	for (int i = compiler->local_count - 1; i >= 0; --i) {
+		const Local* local = &compiler->locals[i];
 		if (token_equal(name, &local->name)) {
 			if (local->depth < 0)
-				error(p, "Cannot read local variable in its own initializer.");
+				error(parser, "Cannot read local variable in its own initializer.");
 			return i;
 		}
 	}
 	return -1;
 }
 
+static int resolve_upvalue(Parser* parser, Compiler* compiler, const Token* name)
+{
+	if (compiler->enclosing == NULL) return -1;
+
+	// either capture a reference to a local variable
+	const int local = resolve_local(parser, compiler->enclosing, name);
+	if (local >= 0) {
+		compiler->enclosing->locals[local].captured = true;
+		return add_upvalue(parser, compiler, (uint8_t)local, true);
+	}
+
+	// or to an existing upvalue in the outer compilation context
+	const int upvalue = resolve_upvalue(parser, compiler->enclosing, name);
+	if (upvalue >= 0)
+		return add_upvalue(parser, compiler, (uint8_t)upvalue, false);
+
+	return -1;
+}
+
 static void named_variable(Parser* parser, const Token* name, bool can_assign)
 {
 	uint8_t get_op, set_op;
-	int id = resolve_local(parser, name);
+	int id = resolve_local(parser, &parser->compiler, name);
 	if (id >= 0) {
 		get_op = OP_GET_LOCAL;
 		set_op = OP_SET_LOCAL;
+	} else if ((id = resolve_upvalue(parser, &parser->compiler, name)) >= 0) {
+		get_op = OP_GET_UPVALUE;
+		set_op = OP_SET_UPVALUE;
 	} else {
 		id = make_string_constant(parser, name->start, name->length);
 		get_op = OP_GET_GLOBAL;
@@ -811,6 +873,7 @@ ObjFunction* compile(const char* source, Environment* data)
 		.data = data,
 	};
 	compile_begin(&parser.compiler, TYPE_SCRIPT, data);
+	parser.compiler.enclosing = NULL;
 
 	// register any previously interned strings into the chunk's constant pool
 	table_for_each(&data->strings, register_string_constant, &parser);

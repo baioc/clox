@@ -71,6 +71,8 @@ int disassemble_instruction(const Chunk* chunk, const ValueArray* constants, int
 		CASE_CONSTANT(OP_GET_GLOBAL);
 		CASE_CONSTANT(OP_DEFINE_GLOBAL);
 		CASE_CONSTANT(OP_SET_GLOBAL);
+		CASE_BYTE(OP_GET_UPVALUE);
+		CASE_BYTE(OP_SET_UPVALUE);
 		CASE_SIMPLE(OP_EQUAL);
 		CASE_SIMPLE(OP_GREATER);
 		CASE_SIMPLE(OP_LESS);
@@ -85,6 +87,25 @@ int disassemble_instruction(const Chunk* chunk, const ValueArray* constants, int
 		CASE_JUMP(OP_JUMP_IF_FALSE, 1);
 		CASE_JUMP(OP_LOOP, -1);
 		CASE_BYTE(OP_CALL);
+		case OP_CLOSURE: {
+			offset++;
+			const uint8_t id = chunk_get_byte(chunk, offset++);
+			printf("%-16s %4d ", "OP_CLOSURE", id);
+			Value closure = constant_get(constants, id);
+			value_print(closure);
+			printf("\n");
+
+			ObjFunction* function = value_as_function(closure);
+			for (int i = 0; i < function->upvalues; ++i) {
+				const int local = chunk_get_byte(chunk, offset++);
+				const int index = chunk_get_byte(chunk, offset++);
+				printf("%04d      |                     %s %d\n",
+				       offset - 2, local ? "local" : "upvalue", index);
+			}
+
+			return offset;
+		}
+		CASE_SIMPLE(OP_CLOSE_UPVALUE);
 		CASE_SIMPLE(OP_RETURN);
 		default: printf("Unknown opcode %d\n", instruction); return 1;
 	}

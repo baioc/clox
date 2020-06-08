@@ -13,6 +13,8 @@
 typedef enum {
 	OBJ_STRING,
 	OBJ_FUNCTION,
+	OBJ_CLOSURE,
+	OBJ_UPVALUE,
 	OBJ_NATIVE,
 } ObjType;
 
@@ -22,23 +24,44 @@ struct Obj {
 };
 
 struct ObjString {
-	struct Obj obj; // type punning ("struct inheritance") enabler
+	struct Obj obj;
+	/* ^ Obj type punning ^ */
 	hash_t hash;
 	size_t length;
 	char* chars;
 };
 
+typedef struct ObjUpvalue {
+	struct Obj obj;
+	/* ^ Obj type punning ^ */
+	Value* location;
+	Value closed;
+	struct ObjUpvalue* next;
+} ObjUpvalue;
+
 typedef struct {
 	struct Obj obj;
+	/* ^ Obj type punning ^ */
 	ObjString* name;
 	int arity;
+	int upvalues;
 	Chunk bytecode;
 } ObjFunction;
+
+typedef struct {
+	struct Obj obj;
+	/* ^ Obj type punning ^ */
+	ObjFunction* function;
+	int upvalue_count;
+	ObjUpvalue** upvalues;
+} ObjClosure;
+
 
 typedef Value (*NativeFn)(int arc, Value argv[]);
 
 typedef struct {
 	struct Obj obj;
+	/* ^ Obj type punning ^ */
 	NativeFn function;
 } ObjNative;
 
@@ -61,6 +84,11 @@ inline bool value_is_string(Value value)
 inline bool value_is_function(Value value)
 {
 	return value_obj_is_type(value, OBJ_FUNCTION);
+}
+
+inline bool value_is_closure(Value value)
+{
+	return value_obj_is_type(value, OBJ_CLOSURE);
 }
 
 inline bool value_is_native(Value value)
@@ -88,6 +116,11 @@ inline NativeFn value_as_native(Value value)
 	return ((ObjNative*)value_as_obj(value))->function;
 }
 
+inline ObjClosure* value_as_closure(Value value)
+{
+	return (ObjClosure*)value_as_obj(value);
+}
+
 void obj_print(Value value);
 
 // Deallocates all Objs in the OBJECTS linked list.
@@ -106,5 +139,11 @@ ObjFunction* make_obj_function(Obj** objects);
 
 // Allocates a new ObjNative FUNCTION in the OBJECTS linked list.
 ObjNative* make_obj_native(Obj** objects, NativeFn function);
+
+// Allocates a new ObjClojure FUNCTION in the OBJECTS linked list.
+ObjClosure* make_obj_closure(Obj** objects, ObjFunction* function);
+
+// Allocates a new ObjUpvalue with SLOT in the OBJECTS linked list.
+ObjUpvalue* make_obj_upvalue(Obj** objects, Value* slot);
 
 #endif // CLOX_OBJECT_H

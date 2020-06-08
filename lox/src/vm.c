@@ -4,6 +4,7 @@
 #include <stdarg.h>
 #include <string.h> // strlen
 #include <time.h> // clock(), CLOCKS_PER_SEC
+#include <assert.h>
 
 #include <sgl/core.h> // ARRAY_SIZE
 
@@ -47,6 +48,7 @@ void vm_init(VM* vm)
 {
 	reset_stack(vm);
 	vm->data.objects = NULL;
+	vm->data.open_upvalues = NULL;
 	value_array_init(&vm->data.constants);
 	table_init(&vm->data.strings);
 	table_init(&vm->data.globals);
@@ -103,12 +105,12 @@ static void runtime_error(VM* vm, const char* format, ...)
 	for (int i = vm->frame_count - 1; i >= 0; --i) {
 		const CallFrame* frame = &vm->frames[i];
 		const size_t instruction = frame->program_counter - 1;
-		const int line = chunk_get_line(&frame->subroutine->bytecode, instruction);
+		const int line = chunk_get_line(&frame->subroutine->function->bytecode, instruction);
 		fprintf(stderr, "[line %d] in ", line);
-		if (frame->subroutine->name == NULL)
+		if (frame->subroutine->function->name == NULL)
 			fprintf(stderr, "script\n");
 		else
-			fprintf(stderr, "%s()\n", frame->subroutine->name->chars);
+			fprintf(stderr, "%s()\n", frame->subroutine->function->name->chars);
 	}
 
 	reset_stack(vm);
@@ -126,17 +128,17 @@ static void define_native(VM* vm, const char* name, NativeFn function)
 	pop(vm);
 }
 
-static bool call(VM* vm, ObjFunction* function, int argc)
+static bool call(VM* vm, ObjClosure* closure, int argc)
 {
-	if (argc != function->arity) {
-		runtime_error(vm, "Expected %d arguments but got %d.", function->arity, argc);
+	if (argc != closure->function->arity) {
+		runtime_error(vm, "Expected %d arguments but got %d.", closure->function->arity, argc);
 		return false;
 	} else if (vm->frame_count >= ARRAY_SIZE(vm->frames)) {
 		runtime_error(vm, "Stack overflow.");
 		return false;
 	} else {
 		CallFrame* frame = &vm->frames[vm->frame_count++];
-		frame->subroutine = function;
+		frame->subroutine = closure;
 		frame->program_counter = 0;
 		frame->frame_pointer = vm->stack_pointer - (argc + 1);
 		return true;
@@ -148,7 +150,7 @@ static bool call_value(VM* vm, Value callee, int argc)
 	if (!value_is_obj(callee)) goto FAIL;
 
 	switch (obj_type(callee)) {
-		case OBJ_FUNCTION: return call(vm, value_as_function(callee), argc);
+		case OBJ_CLOSURE: return call(vm, value_as_closure(callee), argc);
 		case OBJ_NATIVE: {
 			NativeFn native = value_as_native(callee);
 			Value result = native(argc, vm->stack_pointer - argc);
@@ -164,6 +166,41 @@ FAIL:
 	return false;
 }
 
+static ObjUpvalue* capture_upvalue(VM* vm, Value* local)
+{
+	// before creating an upvalue variable, look up an existing one for sharing
+	ObjUpvalue* prev = NULL;
+	ObjUpvalue* curr = vm->data.open_upvalues;
+
+	// the open upvalues list is sorted from the stack top
+	while (curr != NULL && curr->location > local) {
+		prev = curr;
+		curr = curr->next;
+	}
+	if (curr != NULL && curr->location == local)
+		return curr;
+
+	// otherwise, create a upvalue and insert it into the sorted list
+	ObjUpvalue* upvalue = make_obj_upvalue(&vm->data.objects, local);
+	upvalue->next = curr;
+	if (prev != NULL) {
+		prev->next = upvalue;
+	} else {
+		vm->data.open_upvalues = upvalue;
+	}
+	return upvalue;
+}
+
+static void close_upvalues(VM* vm, Value* last)
+{
+	while (vm->data.open_upvalues != NULL && vm->data.open_upvalues->location >= last) {
+		ObjUpvalue* upvalue = vm->data.open_upvalues;
+		upvalue->closed = *upvalue->location;
+		upvalue->location = &upvalue->closed;
+		vm->data.open_upvalues = upvalue->next;
+	}
+}
+
 static void debug_trace_run(const VM* vm, const CallFrame* frame)
 {
 #if DEBUG_TRACE_EXECUTION
@@ -174,7 +211,7 @@ static void debug_trace_run(const VM* vm, const CallFrame* frame)
 		printf(" ]");
 	}
 	printf("\n");
-	disassemble_instruction(&frame->subroutine->bytecode,
+	disassemble_instruction(&frame->subroutine->function->bytecode,
 	                        &vm->data.constants,
 	                        frame->program_counter);
 #endif
@@ -184,12 +221,13 @@ static InterpretResult run(VM* vm)
 {
 	CallFrame* frame = &vm->frames[vm->frame_count - 1];
 
-	#define READ_BYTE() chunk_get_byte(&frame->subroutine->bytecode, frame->program_counter++)
+	#define READ_BYTE() \
+		chunk_get_byte(&frame->subroutine->function->bytecode, frame->program_counter++)
 	#define READ_CONSTANT() constant_get(&vm->data.constants, READ_BYTE())
 	#define READ_SHORT() \
 		(frame->program_counter += 2, \
-		 (chunk_get_byte(&frame->subroutine->bytecode, frame->program_counter - 2) << 8) \
-		| chunk_get_byte(&frame->subroutine->bytecode, frame->program_counter - 1))
+		 (chunk_get_byte(&frame->subroutine->function->bytecode, frame->program_counter - 2) << 8) \
+		| chunk_get_byte(&frame->subroutine->function->bytecode, frame->program_counter - 1))
 	#define BINARY_OP(type_value, op) do { \
 		if (!value_is_number(peek(vm, 0)) || !value_is_number(peek(vm, 1))) { \
 			runtime_error(vm, "Operands must be numbers."); \
@@ -208,21 +246,28 @@ static InterpretResult run(VM* vm)
 		// @TODO: benchmark manual jump table optimized with computed gotos
 		switch (instruction) {
 			case OP_CONSTANT: push(vm, READ_CONSTANT()); break;
+
 			case OP_NIL: push(vm, nil_value()); break;
+
 			case OP_TRUE: push(vm, bool_value(true)); break;
+
 			case OP_FALSE: push(vm, bool_value(false)); break;
+
 			case OP_POP: pop(vm); break;
+
 			case OP_GET_LOCAL: {
 				const uint8_t slot = READ_BYTE();
 				push(vm, frame->frame_pointer[slot]);
 				break;
 			}
+
 			case OP_SET_LOCAL: {
 				const uint8_t slot = READ_BYTE();
 				// assignment is an expression -> no need to pop assigned value
 				frame->frame_pointer[slot] = peek(vm, 0);
 				break;
 			}
+
 			case OP_GET_GLOBAL: {
 				/* @XXX: optimize access to global variables via statically
 				computed array indexes instead of hash table name lookups: see
@@ -236,12 +281,14 @@ static InterpretResult run(VM* vm)
 				push(vm, value);
 				break;
 			}
+
 			case OP_DEFINE_GLOBAL: {
 				const ObjString* name = value_as_string(READ_CONSTANT());
 				table_put(&vm->data.globals, name, peek(vm, 0));
 				pop(vm);
 				break;
 			}
+
 			case OP_SET_GLOBAL: {
 				ObjString* name = value_as_string(READ_CONSTANT());
 				if (!table_put(&vm->data.globals, name, peek(vm, 0))) {
@@ -251,26 +298,47 @@ static InterpretResult run(VM* vm)
 				}
 				break;
 			}
+
+			case OP_GET_UPVALUE: {
+				const uint8_t slot = READ_BYTE();
+				push(vm, *frame->subroutine->upvalues[slot]->location);
+				break;
+			}
+
+			case OP_SET_UPVALUE: {
+				const uint8_t slot = READ_BYTE();
+				*frame->subroutine->upvalues[slot]->location = peek(vm, 0);
+				break;
+			}
+
 			case OP_EQUAL: {
 				const Value b = pop(vm);
 				const Value a = pop(vm);
 				push(vm, bool_value(value_equal(a, b)));
 				break;
 			}
+
 			case OP_GREATER: BINARY_OP(bool_value, >); break;
+
 			case OP_LESS: BINARY_OP(bool_value, <); break;
+
 			case OP_ADD:
 				if (value_is_string(peek(vm, 0)) && value_is_string(peek(vm, 1)))
 					concatenate_strings(vm);
 				else
 					BINARY_OP(number_value, +);
 				break;
+
 			case OP_SUBTRACT: BINARY_OP(number_value, -); break;
+
 			case OP_MULTIPLY: BINARY_OP(number_value, *); break;
+
 			case OP_DIVIDE: BINARY_OP(number_value, /); break;
+
 			case OP_NOT:
 				push(vm, bool_value(value_is_falsey(pop(vm))));
 				break;
+
 			case OP_NEGATE:
 				if (!value_is_number(peek(vm, 0))) {
 					runtime_error(vm, "Operand must be a number.");
@@ -278,26 +346,31 @@ static InterpretResult run(VM* vm)
 				}
 				push(vm, number_value(-value_as_number(pop(vm))));
 				break;
+
 			case OP_PRINT:
 				value_print(pop(vm));
 				printf("\n");
 				break;
+
 			case OP_JUMP: {
 				const uint16_t jump = READ_SHORT();
 				frame->program_counter += jump;
 				break;
 			}
+
 			case OP_JUMP_IF_FALSE: {
 				const uint16_t jump = READ_SHORT();
 				if (value_is_falsey(peek(vm, 0)))
 					frame->program_counter += jump;
 				break;
 			}
+
 			case OP_LOOP: {
 				const uint16_t jump = READ_SHORT();
 				frame->program_counter -= jump;
 				break;
 			}
+
 			case OP_CALL: {
 				const int argc = READ_BYTE();
 				const Value callee = peek(vm, argc);
@@ -308,8 +381,29 @@ static InterpretResult run(VM* vm)
 				frame = &vm->frames[vm->frame_count - 1];
 				break;
 			}
+
+			case OP_CLOSURE: {
+				ObjFunction* function = value_as_function(READ_CONSTANT());
+				ObjClosure* closure = make_obj_closure(&vm->data.objects, function);
+				push(vm, obj_value((Obj*)closure));
+				for (int i = 0; i < closure->upvalue_count; ++i) {
+					const uint8_t local = READ_BYTE();
+					const uint8_t index = READ_BYTE();
+					closure->upvalues[i] = local ? capture_upvalue(vm, frame->frame_pointer + index)
+					                             : frame->subroutine->upvalues[index];
+				}
+				break;
+			}
+
+			case OP_CLOSE_UPVALUE:
+				close_upvalues(vm, vm->stack_pointer - 1);
+				pop(vm);
+				break;
+
 			case OP_RETURN: {
 				const Value result = pop(vm);
+
+				close_upvalues(vm, frame->frame_pointer);
 
 				vm->frame_count--;
 				if (vm->frame_count <= 0) {
@@ -323,6 +417,8 @@ static InterpretResult run(VM* vm)
 				frame = &vm->frames[vm->frame_count - 1];
 				break;
 			}
+
+			default: assert(false);
 		}
 	}
 
@@ -334,10 +430,11 @@ static InterpretResult run(VM* vm)
 
 InterpretResult vm_interpret(VM* vm, const char* source)
 {
-	ObjFunction* program = compile(source, &vm->data);
-	if (program == NULL) return INTERPRET_COMPILE_ERROR;
+	ObjFunction* main = compile(source, &vm->data);
+	if (main == NULL) return INTERPRET_COMPILE_ERROR;
 
-	// setup initial (i.e. main) call frame
+	// setup initial call frame
+	ObjClosure* program = make_obj_closure(&vm->data.objects, main);
 	push(vm, obj_value((Obj*)program));
 	call(vm, program, 0);
 

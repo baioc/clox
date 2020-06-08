@@ -1,6 +1,6 @@
 # clox
 
-This is my implementation of Robert Nystrom's [Crafting Interpreters](http://www.craftinginterpreters.com/) bytecode compiler and virtual machine for the Lox language.
+This is my implementation of Robert Nystrom's [Crafting Interpreters](http://www.craftinginterpreters.com/) single-pass compiler and bytecode virtual machine for the Lox language, with a slightly more disciplined C style.
 
 
 ## Notes

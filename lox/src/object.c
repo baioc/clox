@@ -13,19 +13,19 @@
 
 #if DEBUG_DYNAMIC_MEMORY
 #	define DEBUG_FREE_OBJ(obj, type, size) \
-		printf(";;; Freeing %s (%u bytes) at %p\n", #type, size, obj)
+		printf(";;; Freeing %s (%u bytes) at %p\n", #type, (size), (obj))
 
 #	define DEBUG_MALLOC_OBJ(obj, type, size) \
-		printf(";;; Allocating [%d] object (%u bytes) at %p\n", type, size, obj)
+		printf(";;; Allocating [%d] object (%u bytes) at %p\n", type, (size), (obj))
 
 #	define DEBUG_FREE_EXTRA(obj, extra_ptr, type_str, size) do { \
 			printf(";;; Freeing %s ", type_str); \
-			obj_print(obj_value(obj)); \
-			printf(" (%u bytes) at %p\n", size, extra_ptr); \
+			obj_print(obj_value((obj))); \
+			printf(" (%u bytes) at %p\n", (size), (extra_ptr)); \
 		} while (0)
 
 #	define DEBUG_MALLOC_EXTRA(extra_ptr, type_str, size) \
-		printf(";;; Allocating %s (%u bytes) at %p\n", type_str, size, extra_ptr)
+		printf(";;; Allocating %s (%u bytes) at %p\n", type_str, (size), (extra_ptr))
 
 #else
 #	define DEBUG_FREE_OBJ(obj, type, size) ((void)0)
@@ -33,6 +33,9 @@
 #	define DEBUG_FREE_EXTRA(obj, extra, type_str, size) ((void)0)
 #	define DEBUG_MALLOC_EXTRA(extra_ptr, type_str, size) ((void)0)
 #endif
+
+#define ALLOCATE_OBJ(objects, type, enum_type) \
+	(type*)allocate_obj((objects), sizeof(type), (enum_type));
 
 
 extern inline ObjType obj_type(Value value);
@@ -43,6 +46,8 @@ extern inline bool value_is_string(Value value);
 
 extern inline bool value_is_function(Value value);
 
+extern inline bool value_is_closure(Value value);
+
 extern inline bool value_is_native(Value value);
 
 extern inline ObjString* value_as_string(Value value);
@@ -50,6 +55,8 @@ extern inline ObjString* value_as_string(Value value);
 extern inline char* value_as_c_str(Value value);
 
 extern inline ObjFunction* value_as_function(Value value);
+
+extern inline ObjClosure* value_as_closure(Value value);
 
 extern inline NativeFn value_as_native(Value value);
 
@@ -66,6 +73,8 @@ void obj_print(Value value)
 	switch (obj_type(value)) {
 		case OBJ_STRING: printf("\"%s\"", value_as_c_str(value)); break;
 		case OBJ_FUNCTION: print_function(value_as_function(value)); break;
+		case OBJ_CLOSURE: print_function(value_as_closure(value)->function); break;
+		case OBJ_UPVALUE: printf("upvalue"); break;
 		case OBJ_NATIVE: printf("<native fn>"); break;
 		default: assert(false);
 	}
@@ -73,28 +82,37 @@ void obj_print(Value value)
 
 static void free_obj(Obj* object)
 {
+	#define FREE_OBJ(object, type) do { \
+			DEBUG_FREE_OBJ((object), type, sizeof(type)); \
+			free((object)); \
+		} while (0)
+
 	switch (object->type) {
 		case OBJ_STRING: {
 			ObjString* string = (ObjString*)object;
 			DEBUG_FREE_EXTRA(object, string->chars, "string", string->length + 1);
 			free(string->chars);
-			DEBUG_FREE_OBJ(object, ObjString, sizeof(ObjString));
-			free(string);
+			FREE_OBJ(object, ObjString);
 			break;
 		}
-		case OBJ_FUNCTION: {
-			ObjFunction* function = (ObjFunction*)object;
-			chunk_destroy(&function->bytecode);
-			DEBUG_FREE_OBJ(object, ObjFunction, sizeof(ObjFunction));
-			free(function);
+		case OBJ_FUNCTION:
+			chunk_destroy(&((ObjFunction*)object)->bytecode);
+			FREE_OBJ(object, ObjFunction);
+			break;
+		case OBJ_CLOSURE: {
+			ObjClosure* closure = (ObjClosure*)object;
+			DEBUG_FREE_EXTRA(object, closure->upvalues,
+			                 "upvalues[]", sizeof(ObjUpvalue*) * closure->upvalue_count);
+			free(closure->upvalues);
+			FREE_OBJ(object, ObjClosure);
 			break;
 		}
-		case OBJ_NATIVE:
-			DEBUG_FREE_OBJ(object, ObjNative, sizeof(ObjNative));
-			free(object);
-			break;
+		case OBJ_UPVALUE: FREE_OBJ(object, ObjUpvalue); break;
+		case OBJ_NATIVE: FREE_OBJ(object, ObjNative); break;
 		default: assert(false);
 	}
+
+	#undef FREE_OBJ
 }
 
 void free_objects(Obj** objects)
@@ -130,13 +148,10 @@ static Obj* allocate_obj(Obj** objects, size_t size, ObjType type)
 static ObjString* allocate_string(Obj** objects, Table* interned,
                                   char* str, size_t str_len, hash_t hash)
 {
-	const size_t size = sizeof(ObjString);
-	ObjString* string = (ObjString*)allocate_obj(objects, size, OBJ_STRING);
-
+	ObjString* string = ALLOCATE_OBJ(objects, ObjString, OBJ_STRING);
 	string->hash = hash;
 	string->length = str_len;
 	string->chars = str;
-
 	table_put(interned, string, nil_value());
 	return string;
 }
@@ -183,10 +198,11 @@ ObjString* obj_string_concat(Obj** objs, Table* strings,
 	                        : make_obj_string_copy(objs, strings, str, n, hash);
 }
 
-ObjFunction* make_obj_function(Obj** objs)
+ObjFunction* make_obj_function(Obj** objects)
 {
-	ObjFunction* proc = (ObjFunction*)allocate_obj(objs, sizeof(ObjFunction), OBJ_FUNCTION);
+	ObjFunction* proc = ALLOCATE_OBJ(objects, ObjFunction, OBJ_FUNCTION);
 	proc->arity = 0;
+	proc->upvalues = 0;
 	proc->name = NULL;
 	chunk_init(&proc->bytecode);
 	return proc;
@@ -194,12 +210,43 @@ ObjFunction* make_obj_function(Obj** objs)
 
 ObjNative* make_obj_native(Obj** objects, NativeFn function)
 {
-	ObjNative* native = (ObjNative*)allocate_obj(objects, sizeof(ObjNative), OBJ_NATIVE);
+	ObjNative* native = ALLOCATE_OBJ(objects, ObjNative, OBJ_NATIVE);
 	native->function = function;
 	return native;
 }
 
+ObjClosure* make_obj_closure(Obj** objects, ObjFunction* function)
+{
+	const size_t size = sizeof(ObjUpvalue*) * function->upvalues;
+	ObjUpvalue** upvalues = malloc(size);
+	DEBUG_MALLOC_EXTRA(upvalues, "upvalues[]", size);
+	if (upvalues == NULL && size != 0) {
+		fprintf(stderr, "Out of memory!\n");
+		exit(74);
+	}
 
+	for (int i = 0; i < function->upvalues; ++i)
+		upvalues[i] = NULL;
+
+	ObjClosure* closure = ALLOCATE_OBJ(objects, ObjClosure, OBJ_CLOSURE);
+	closure->function = function;
+	closure->upvalues = upvalues;
+	closure->upvalue_count = function->upvalues;
+
+	return closure;
+}
+
+ObjUpvalue* make_obj_upvalue(Obj** objects, Value* slot)
+{
+	ObjUpvalue* upvalue = ALLOCATE_OBJ(objects, ObjUpvalue, OBJ_UPVALUE);
+	upvalue->location = slot;
+	upvalue->closed = nil_value();
+	upvalue->next = NULL;
+	return upvalue;
+}
+
+
+#undef ALLOCATE_OBJ
 #undef DEBUG_MALLOC_EXTRA
 #undef DEBUG_FREE_EXTRA
 #undef DEBUG_MALLOC_OBJ
