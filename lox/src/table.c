@@ -7,6 +7,7 @@
 
 #include "object.h" // ObjString
 #include "common.h" // NULL
+#include "memory.h" // reallocate
 
 
 struct key {
@@ -43,9 +44,14 @@ static int comp(const void* a, const void* b)
 		return memcmp(s1->str, s2->str, s1->length);
 }
 
+static void* realloc_table(void* ptr, size_t size)
+{
+	return reallocate(ptr, size, "Table");
+}
+
 void table_init(Table* tab)
 {
-	map_init(tab, 0, sizeof(struct key), sizeof(struct val), comp, hash, NULL);
+	map_init(tab, 0, sizeof(struct key), sizeof(struct val), comp, hash, realloc_table);
 }
 
 void table_destroy(Table* table)

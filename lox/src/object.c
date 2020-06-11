@@ -1,41 +1,13 @@
 #include "object.h"
 
 #include <stdio.h>
-#include <stdlib.h> // malloc, free
 #include <string.h> // memcpy
 #include <stddef.h> // size_t
 #include <assert.h>
 
-#include "common.h" // DEBUG_DYNAMIC_MEMORY
 #include "table.h"
 #include "chunk.h"
-
-
-#if DEBUG_DYNAMIC_MEMORY
-#	define DEBUG_FREE_OBJ(obj, type, size) \
-		printf(";;; Freeing %s (%u bytes) at %p\n", #type, (size), (obj))
-
-#	define DEBUG_MALLOC_OBJ(obj, type, size) \
-		printf(";;; Allocating [%d] object (%u bytes) at %p\n", type, (size), (obj))
-
-#	define DEBUG_FREE_EXTRA(obj, extra_ptr, type_str, size) do { \
-			printf(";;; Freeing %s ", type_str); \
-			obj_print(obj_value((obj))); \
-			printf(" (%u bytes) at %p\n", (size), (extra_ptr)); \
-		} while (0)
-
-#	define DEBUG_MALLOC_EXTRA(extra_ptr, type_str, size) \
-		printf(";;; Allocating %s (%u bytes) at %p\n", type_str, (size), (extra_ptr))
-
-#else
-#	define DEBUG_FREE_OBJ(obj, type, size) ((void)0)
-#	define DEBUG_MALLOC_OBJ(obj, type, size) ((void)0)
-#	define DEBUG_FREE_EXTRA(obj, extra, type_str, size) ((void)0)
-#	define DEBUG_MALLOC_EXTRA(extra_ptr, type_str, size) ((void)0)
-#endif
-
-#define ALLOCATE_OBJ(objects, type, enum_type) \
-	(type*)allocate_obj((objects), sizeof(type), (enum_type));
+#include "memory.h" // reallocate
 
 
 extern inline ObjType obj_type(Value value);
@@ -80,18 +52,14 @@ void obj_print(Value value)
 	}
 }
 
-static void free_obj(Obj* object)
+void free_obj(Obj* object)
 {
-	#define FREE_OBJ(object, type) do { \
-			DEBUG_FREE_OBJ((object), type, sizeof(type)); \
-			free((object)); \
-		} while (0)
+	#define FREE_OBJ(object, type) reallocate((object), 0, #type)
 
 	switch (object->type) {
 		case OBJ_STRING: {
 			ObjString* string = (ObjString*)object;
-			DEBUG_FREE_EXTRA(object, string->chars, "string", string->length + 1);
-			free(string->chars);
+			reallocate(string->chars, 0, "string");
 			FREE_OBJ(object, ObjString);
 			break;
 		}
@@ -101,9 +69,7 @@ static void free_obj(Obj* object)
 			break;
 		case OBJ_CLOSURE: {
 			ObjClosure* closure = (ObjClosure*)object;
-			DEBUG_FREE_EXTRA(object, closure->upvalues,
-			                 "upvalues[]", sizeof(ObjUpvalue*) * closure->upvalue_count);
-			free(closure->upvalues);
+			reallocate(closure->upvalues, 0, "upvalues[]");
 			FREE_OBJ(object, ObjClosure);
 			break;
 		}
@@ -117,7 +83,7 @@ static void free_obj(Obj* object)
 
 void free_objects(Obj** objects)
 {
-	#define HEAD(list) (*list)
+	#define HEAD(list) (*(list))
 
 	while (HEAD(objects) != NULL) {
 		Obj* next = HEAD(objects)->next;
@@ -128,21 +94,18 @@ void free_objects(Obj** objects)
 	#undef HEAD
 }
 
-static Obj* allocate_obj(Obj** objects, size_t size, ObjType type)
+static Obj* allocate_obj(Obj** objects, size_t size, ObjType type, const char* why)
 {
-	Obj* obj = malloc(size);
-	DEBUG_MALLOC_OBJ(obj, type, size);
-	if (obj == NULL) {
-		fprintf(stderr, "Out of memory!\n");
-		exit(74);
-	}
-
+	Obj* obj = reallocate(NULL, size, why);
 	obj->type = type;
 	obj->next = *objects;
+	obj->marked = false;
 	*objects = obj;
-
 	return obj;
 }
+
+#define ALLOCATE_OBJ(objects, type, enum_type) \
+	(type*)allocate_obj((objects), sizeof(type), (enum_type), #type);
 
 // Allocates an ObjString and automatically interns it.
 static ObjString* allocate_string(Obj** objects, Table* interned,
@@ -159,19 +122,9 @@ static ObjString* allocate_string(Obj** objects, Table* interned,
 static ObjString* make_obj_string_copy(Obj** objs, Table* strings,
                                        const char* str, size_t n, hash_t hash)
 {
-	// allocate characters
-	char* chars = malloc(n + 1);
-	DEBUG_MALLOC_EXTRA(chars, "string", n + 1);
-	if (chars == NULL) {
-		fprintf(stderr, "Out of memory!\n");
-		exit(74);
-	}
-
-	// copy contents
+	char* chars = reallocate(NULL, n + 1, "string");
 	memcpy(chars, str, n);
 	chars[n] = '\0';
-
-	// allocate Lox object
 	return allocate_string(objs, strings, chars, n, hash);
 }
 
@@ -188,7 +141,7 @@ ObjString* obj_string_concat(Obj** objs, Table* strings,
 {
 	// prepare temporary resultant string for hash
 	const size_t n = prefix->length + suffix->length;
-	char str[n];
+	char str[n]; // VLA
 	memcpy(str, prefix->chars, prefix->length);
 	memcpy(str + prefix->length, suffix->chars, suffix->length);
 
@@ -218,12 +171,7 @@ ObjNative* make_obj_native(Obj** objects, NativeFn function)
 ObjClosure* make_obj_closure(Obj** objects, ObjFunction* function)
 {
 	const size_t size = sizeof(ObjUpvalue*) * function->upvalues;
-	ObjUpvalue** upvalues = malloc(size);
-	DEBUG_MALLOC_EXTRA(upvalues, "upvalues[]", size);
-	if (upvalues == NULL && size != 0) {
-		fprintf(stderr, "Out of memory!\n");
-		exit(74);
-	}
+	ObjUpvalue** upvalues = reallocate(NULL, size, "upvalues[]");
 
 	for (int i = 0; i < function->upvalues; ++i)
 		upvalues[i] = NULL;
@@ -245,9 +193,4 @@ ObjUpvalue* make_obj_upvalue(Obj** objects, Value* slot)
 	return upvalue;
 }
 
-
 #undef ALLOCATE_OBJ
-#undef DEBUG_MALLOC_EXTRA
-#undef DEBUG_FREE_EXTRA
-#undef DEBUG_MALLOC_OBJ
-#undef DEBUG_FREE_OBJ

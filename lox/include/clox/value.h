@@ -91,16 +91,10 @@ void value_print(Value value);
 bool value_equal(Value a, Value b);
 
 // Initializes an empty ARRAY. value_array_destroy() must be called on it later.
-inline void value_array_init(ValueArray* array)
-{
-	list_init(array, 0, sizeof(Value), NULL);
-}
+void value_array_init(ValueArray* array);
 
 // Deallocates any resources acquired by value_array_init() on ARRAY.
-inline void value_array_destroy(ValueArray* array)
-{
-	list_destroy(array);
-}
+void value_array_destroy(ValueArray* array);
 
 // Gets the current size of ARRAY.
 inline int value_array_size(const ValueArray* array)

@@ -1,12 +1,13 @@
 #include "vm.h"
 
 #include <stdio.h>
-#include <stdarg.h>
+#include <stdarg.h> // varargs
 #include <string.h> // strlen
 #include <time.h> // clock(), CLOCKS_PER_SEC
 #include <assert.h>
 
 #include <sgl/core.h> // ARRAY_SIZE
+#include <sgl/stack.h>
 
 #include "chunk.h"
 #include "value.h"
@@ -46,13 +47,22 @@ static Value native_clock(int argc, Value argv[])
 
 void vm_init(VM* vm)
 {
+	#define GC_HEAP_INITIAL (1024 * 1024)
+
 	reset_stack(vm);
-	vm->data.objects = NULL;
 	vm->data.open_upvalues = NULL;
+	vm->data.allocated = 0;
+	vm->data.next_gc = GC_HEAP_INITIAL;
+
+	stack_init(&vm->data.grays, 0, sizeof(Obj*), NULL);
+	vm->data.objects = NULL;
 	value_array_init(&vm->data.constants);
 	table_init(&vm->data.strings);
 	table_init(&vm->data.globals);
+
 	define_native(vm, "clock", native_clock);
+
+	#undef GC_HEAP_INITIAL
 }
 
 void vm_destroy(VM* vm)
@@ -61,6 +71,7 @@ void vm_destroy(VM* vm)
 	table_destroy(&vm->data.strings);
 	value_array_destroy(&vm->data.constants);
 	free_objects(&vm->data.objects);
+	stack_destroy(&vm->data.grays);
 }
 
 static void push(VM* vm, Value value)
@@ -119,13 +130,9 @@ static void runtime_error(VM* vm, const char* format, ...)
 // Should only be called during vm_init() !
 static void define_native(VM* vm, const char* name, NativeFn function)
 {
-	push(vm,
-	     obj_value((Obj*)make_obj_string(&vm->data.objects, &vm->data.strings, name, strlen(name))));
-	push(vm,
-	     obj_value((Obj*)make_obj_native(&vm->data.objects, function)));
-	table_put(&vm->data.globals, value_as_string(vm->stack[0]), vm->stack[1]);
-	pop(vm);
-	pop(vm);
+	ObjString* binding = make_obj_string(&vm->data.objects, &vm->data.strings, name, strlen(name));
+	Value native = obj_value((Obj*)make_obj_native(&vm->data.objects, function));
+	table_put(&vm->data.globals, binding, native);
 }
 
 static bool call(VM* vm, ObjClosure* closure, int argc)

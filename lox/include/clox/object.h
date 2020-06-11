@@ -21,47 +21,37 @@ typedef enum {
 struct Obj {
 	ObjType type;
 	struct Obj* next;
+	bool marked;
 };
 
-struct ObjString {
-	struct Obj obj;
-	/* ^ Obj type punning ^ */
+struct ObjString { /* <: */ struct Obj obj;
 	hash_t hash;
 	size_t length;
 	char* chars;
 };
 
-typedef struct ObjUpvalue {
-	struct Obj obj;
-	/* ^ Obj type punning ^ */
+typedef struct ObjUpvalue { /* <: */ struct Obj obj;
 	Value* location;
 	Value closed;
 	struct ObjUpvalue* next;
 } ObjUpvalue;
 
-typedef struct {
-	struct Obj obj;
-	/* ^ Obj type punning ^ */
+typedef struct { /* <: */ struct Obj obj;
 	ObjString* name;
 	int arity;
 	int upvalues;
 	Chunk bytecode;
 } ObjFunction;
 
-typedef struct {
-	struct Obj obj;
-	/* ^ Obj type punning ^ */
+typedef struct { /* <: */ struct Obj obj;
 	ObjFunction* function;
 	int upvalue_count;
 	ObjUpvalue** upvalues;
 } ObjClosure;
 
-
 typedef Value (*NativeFn)(int arc, Value argv[]);
 
-typedef struct {
-	struct Obj obj;
-	/* ^ Obj type punning ^ */
+typedef struct { /* <: */ struct Obj obj;
 	NativeFn function;
 } ObjNative;
 
@@ -122,6 +112,9 @@ inline ObjClosure* value_as_closure(Value value)
 }
 
 void obj_print(Value value);
+
+// Deallocates a single OBJECT from the heap.
+void free_obj(Obj* object);
 
 // Deallocates all Objs in the OBJECTS linked list.
 void free_objects(Obj** objects);

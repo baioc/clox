@@ -15,6 +15,9 @@
 #define DEBUG_TRACE_EXECUTION 0
 
 // Prints dynamic memory management during the Lox runtime.
-#define DEBUG_DYNAMIC_MEMORY 0
+#define DEBUG_LOG_GC 1
+
+// Makes the GC run on (almost) every allocation.
+#define DEBUG_STRESS_GC 1
 
 #endif // CLOX_COMMON_H

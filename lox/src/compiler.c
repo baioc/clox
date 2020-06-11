@@ -508,7 +508,7 @@ static void compile_begin(Compiler* compiler, FunctionType type, Environment* da
 
 static ObjFunction* compile_end(Parser* parser)
 {
-	// @FIXME: even when there's a return, [OP_NIL OP_RETURN] are emitted
+	// @TODO: avoid emitting OP_NIL & OP_RETURN when there's already a return
 	emit_byte(parser, OP_NIL);
 	emit_byte(parser, OP_RETURN);
 
@@ -867,11 +867,7 @@ static void register_string_constant(const ObjString* key, Value* val, void* p)
 ObjFunction* compile(const char* source, Environment* data)
 {
 	// begin compilation
-	Parser parser = {
-		.error = false,
-		.panic = false,
-		.data = data,
-	};
+	Parser parser = { .error = false, .panic = false, .data = data };
 	compile_begin(&parser.compiler, TYPE_SCRIPT, data);
 	parser.compiler.enclosing = NULL;
 

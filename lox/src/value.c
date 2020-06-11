@@ -4,6 +4,7 @@
 #include <string.h> // memcmp
 
 #include "object.h"
+#include "memory.h" // reallocate
 
 
 extern inline Value bool_value(bool value);
@@ -40,8 +41,23 @@ bool value_equal(Value a, Value b)
 	}
 }
 
-extern inline void value_array_init(ValueArray* array);
-extern inline void value_array_destroy(ValueArray* array);
+static void* realloc_value_array(void* ptr, size_t size)
+{
+	return reallocate(ptr, size, "ValueArray");
+}
+
+// Initializes an empty ARRAY. value_array_destroy() must be called on it later.
+void value_array_init(ValueArray* array)
+{
+	list_init(array, 0, sizeof(Value), realloc_value_array);
+}
+
+// Deallocates any resources acquired by value_array_init() on ARRAY.
+void value_array_destroy(ValueArray* array)
+{
+	list_destroy(array);
+}
+
 extern inline int value_array_size(const ValueArray* array);
 extern inline Value value_array_get(const ValueArray* array, int index);
 extern inline void value_array_write(ValueArray* array, Value value);

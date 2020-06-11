@@ -1,11 +1,14 @@
 #ifndef CLOX_VM_H
 #define CLOX_VM_H
 
+#include <sgl/stack.h>
+
 #include "chunk.h"
-#include "common.h" // intptr_t, UINT8_MAX
+#include "common.h" // intptr_t, UINT8_MAX, size_t
 #include "value.h" // Value, ValueArray
 #include "object.h" // Obj, ObjFunction
 #include "table.h"
+
 
 // A data container for the information needed during subroutine execution.
 typedef struct {
@@ -16,11 +19,17 @@ typedef struct {
 
 // Environment structure acting as the VM's heap and data segments.
 typedef struct {
-	Obj* objects;
-	ObjUpvalue* open_upvalues;
-	ValueArray constants;
-	Table strings;
+	// GC info
+	size_t allocated;
+	size_t next_gc;
+	stack_t grays;
+	// heap data
 	Table globals;
+	ObjUpvalue* open_upvalues;
+	Obj* objects;
+	Table strings;
+	// data segment
+	ValueArray constants;
 } Environment;
 
 #define FRAMES_MAX 64

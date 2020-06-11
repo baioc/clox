@@ -31,6 +31,8 @@ add_library(clox
 	src/object.c
 	include/clox/table.h
 	src/table.c
+	include/clox/memory.h
+	src/memory.c
 )
 target_include_directories(clox PUBLIC include/clox)
 target_link_libraries(lox PRIVATE sgl)
