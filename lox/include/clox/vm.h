@@ -17,12 +17,18 @@ typedef struct {
 	Value* frame_pointer;
 } CallFrame;
 
+// forward decls. for environment's GC info
+struct VM;
+struct Compiler;
+
 // Environment structure acting as the VM's heap and data segments.
 typedef struct {
 	// GC info
 	size_t allocated;
 	size_t next_gc;
 	stack_t grays;
+	struct Compiler* compiler;
+	struct VM* vm;
 	// heap data
 	Table globals;
 	ObjUpvalue* open_upvalues;
@@ -36,7 +42,7 @@ typedef struct {
 #define STACK_MAX (FRAMES_MAX * (UINT8_MAX + 1))
 
 // Lox bytecode virtual machine.
-typedef struct {
+typedef struct VM {
 	int frame_count;
 	CallFrame frames[FRAMES_MAX];
 	Value* stack_pointer;
@@ -53,6 +59,12 @@ typedef enum {
 	INTERPRET_RUNTIME_ERROR,
 } InterpretResult;
 
+
+// Gets the current lox execution environment, or NULL if uninitialized.
+Environment* get_current_lox_environment(void);
+
+// Defines the current lox execution environment as ENV, returning the old one.
+Environment* set_current_lox_environment(Environment* env);
 
 /** Adds a constant VALUE to the CONSTANT pool.
  * Returns the pool index where it was added for later access.

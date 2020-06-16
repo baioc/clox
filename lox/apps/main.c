@@ -56,6 +56,7 @@ static char* read_file(const char* path)
 
 static int run_file(const char* filename) {
 	VM vm;
+	Environment* env = set_current_lox_environment(&vm.data);
 	vm_init(&vm);
 	char* source = read_file(filename);
 
@@ -63,6 +64,7 @@ static int run_file(const char* filename) {
 
 	free(source);
 	vm_destroy(&vm);
+	set_current_lox_environment(env);
 
 	if (result == INTERPRET_COMPILE_ERROR) return EX_DATAERR;
 	if (result == INTERPRET_RUNTIME_ERROR) return EX_SOFTWARE;

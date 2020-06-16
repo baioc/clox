@@ -107,25 +107,20 @@ static Obj* allocate_obj(Obj** objects, size_t size, ObjType type, const char* w
 #define ALLOCATE_OBJ(objects, type, enum_type) \
 	(type*)allocate_obj((objects), sizeof(type), (enum_type), #type);
 
-// Allocates an ObjString and automatically interns it.
-static ObjString* allocate_string(Obj** objects, Table* interned,
-                                  char* str, size_t str_len, hash_t hash)
-{
-	ObjString* string = ALLOCATE_OBJ(objects, ObjString, OBJ_STRING);
-	string->hash = hash;
-	string->length = str_len;
-	string->chars = str;
-	table_put(interned, string, nil_value());
-	return string;
-}
-
-static ObjString* make_obj_string_copy(Obj** objs, Table* strings,
+static ObjString* make_obj_string_copy(Obj** objects, Table* strings,
                                        const char* str, size_t n, hash_t hash)
 {
 	char* chars = reallocate(NULL, n + 1, "string");
 	memcpy(chars, str, n);
 	chars[n] = '\0';
-	return allocate_string(objs, strings, chars, n, hash);
+	ObjString* string = ALLOCATE_OBJ(objects, ObjString, OBJ_STRING);
+	string->hash = hash;
+	string->length = n;
+	string->chars = chars;
+	string->obj.marked = true;
+	table_put(strings, string, nil_value());
+	string->obj.marked = false;
+	return string;
 }
 
 ObjString* make_obj_string(Obj** objs, Table* strings, const char* str, size_t n)
@@ -157,7 +152,7 @@ ObjFunction* make_obj_function(Obj** objects)
 	proc->arity = 0;
 	proc->upvalues = 0;
 	proc->name = NULL;
-	chunk_init(&proc->bytecode);
+	chunk_init(&proc->bytecode); // initialized with 0, so proc is GC safe
 	return proc;
 }
 
@@ -172,7 +167,6 @@ ObjClosure* make_obj_closure(Obj** objects, ObjFunction* function)
 {
 	const size_t size = sizeof(ObjUpvalue*) * function->upvalues;
 	ObjUpvalue** upvalues = reallocate(NULL, size, "upvalues[]");
-
 	for (int i = 0; i < function->upvalues; ++i)
 		upvalues[i] = NULL;
 

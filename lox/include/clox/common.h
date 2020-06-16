@@ -17,7 +17,10 @@
 // Prints dynamic memory management during the Lox runtime.
 #define DEBUG_LOG_GC 1
 
-// Makes the GC run on (almost) every allocation.
+// Makes the GC run on every allocation.
 #define DEBUG_STRESS_GC 1
+
+// Initial heap memory.
+#define GC_HEAP_INITIAL (1024 * 1024)
 
 #endif // CLOX_COMMON_H

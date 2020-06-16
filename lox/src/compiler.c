@@ -19,32 +19,6 @@
 
 
 typedef struct {
-	Token name;
-	int depth;
-	bool captured;
-} Local;
-
-typedef struct {
-	uint8_t index;
-	bool local;
-} Upvalue;
-
-typedef enum {
-	TYPE_FUNCTION,
-	TYPE_SCRIPT,
-} FunctionType;
-
-typedef struct Compiler {
-	FunctionType type;
-	ObjFunction* subroutine;
-	struct Compiler* enclosing;
-	int scope_depth;
-	int local_count;
-	Local locals[UINT8_MAX + 1];
-	Upvalue upvalues[UINT8_MAX + 1];
-} Compiler;
-
-typedef struct {
 	Compiler compiler; // syntax-directed translation
 	Scanner scanner;
 	Token current;
@@ -257,8 +231,9 @@ static uint8_t make_string_constant(Parser* parser, const char* chars, size_t le
 	// check if this string was previously registered and if so, return its id
 	Value index = nil_value();
 	table_get(&parser->data->strings, str, &index);
-	if (!value_is_nil(index))
+	if (!value_is_nil(index)) {
 		return (uint8_t)value_as_number(index);
+	}
 
 	// associate string with its created constant pool id
 	const uint8_t id = make_constant(parser, obj_value((Obj*)str));
@@ -491,10 +466,11 @@ static void scope_end(Parser* p)
 	#undef CHECK_CONTINUE
 }
 
-static void compile_begin(Compiler* compiler, FunctionType type, Environment* data)
+static void compile_begin(Compiler* compiler, FunctionType type, Compiler* enclosing)
 {
 	// initialize compilation context
-	compiler->subroutine = make_obj_function(&data->objects);
+	compiler->enclosing = enclosing;
+	compiler->subroutine = NULL;
 	compiler->type = type;
 	compiler->local_count = 0;
 	compiler->scope_depth = 0;
@@ -526,15 +502,16 @@ static ObjFunction* compile_end(Parser* parser)
 
 static void function(Parser* p, FunctionType type)
 {
-	// each function has its specific compiler information and name
-	Compiler compiler;
-	compile_begin(&compiler, type, p->data);
-	compiler.subroutine->name = make_obj_string(&p->data->objects, &p->data->strings,
-	                                            p->previous.start, p->previous.length);
-
 	// temporarily swap local with "current" compiler
+	Compiler compiler;
 	swap(&p->compiler, &compiler, sizeof(Compiler));
 	p->compiler.enclosing = &compiler;
+
+	// each function has its own compiler information
+	compile_begin(&p->compiler, type, &compiler);
+	p->compiler.subroutine = make_obj_function(&p->data->objects);
+	p->compiler.subroutine->name = make_obj_string(&p->data->objects, &p->data->strings,
+	                                               p->previous.start, p->previous.length);
 
 	// compile formal argument list
 	scope_begin(p);
@@ -868,8 +845,9 @@ ObjFunction* compile(const char* source, Environment* data)
 {
 	// begin compilation
 	Parser parser = { .error = false, .panic = false, .data = data };
-	compile_begin(&parser.compiler, TYPE_SCRIPT, data);
-	parser.compiler.enclosing = NULL;
+	data->compiler = &parser.compiler;
+	compile_begin(&parser.compiler, TYPE_SCRIPT, NULL);
+	parser.compiler.subroutine = make_obj_function(&data->objects);
 
 	// register any previously interned strings into the chunk's constant pool
 	table_for_each(&data->strings, register_string_constant, &parser);
@@ -882,6 +860,7 @@ ObjFunction* compile(const char* source, Environment* data)
 	while (!match(&parser, TOKEN_EOF))
 		declaration(&parser);
 
+	data->compiler = NULL;
 	ObjFunction* proc = compile_end(&parser);
 	return parser.error ? NULL : proc;
 }

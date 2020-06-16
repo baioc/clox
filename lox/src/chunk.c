@@ -5,7 +5,6 @@
 #include <sgl/list.h>
 
 #include "common.h" // intptr_t, UINT8_MAX
-#include "memory.h" // reallocate
 
 
 struct line {
@@ -14,16 +13,11 @@ struct line {
 };
 
 
-static void* realloc_chunk(void* ptr, size_t size)
-{
-	return reallocate(ptr, size, "Chunk");
-}
-
 void chunk_init(Chunk* chunk)
 {
 	assert(OP_CODE_MAX <= UINT8_MAX);
-	list_init(&chunk->code, 0, sizeof(uint8_t), realloc_chunk);
-	list_init(&chunk->lines, 0, sizeof(struct line), realloc_chunk);
+	list_init(&chunk->code, 0, sizeof(uint8_t), NULL);
+	list_init(&chunk->lines, 0, sizeof(struct line), NULL);
 }
 
 void chunk_destroy(Chunk* chunk)

@@ -4,6 +4,7 @@
 #include <stdarg.h> // varargs
 #include <string.h> // strlen
 #include <time.h> // clock(), CLOCKS_PER_SEC
+#include <stdlib.h> // realloc
 #include <assert.h>
 
 #include <sgl/core.h> // ARRAY_SIZE
@@ -14,16 +15,32 @@
 #include "object.h" // free_objects
 #include "compiler.h"
 #include "table.h"
-#include "common.h"
+#include "common.h" // GC_HEAP_INITIAL
 #if DEBUG_TRACE_EXECUTION
 #	include "debug.h" // disassemble_instruction
 #endif
 
 
+static Environment* env = NULL;
+
+Environment* get_current_lox_environment(void)
+{
+	return env;
+}
+
+Environment* set_current_lox_environment(Environment* new)
+{
+	Environment* old = env;
+	env = new;
+	return old;
+}
+
 int constant_add(ValueArray* constants, Value value)
 {
 	const int index = value_array_size(constants);
+	if (value_is_obj(value)) value_as_obj(value)->marked = true;
 	value_array_write(constants, value);
+	if (value_is_obj(value)) value_as_obj(value)->marked = false;
 	return index;
 }
 
@@ -47,22 +64,21 @@ static Value native_clock(int argc, Value argv[])
 
 void vm_init(VM* vm)
 {
-	#define GC_HEAP_INITIAL (1024 * 1024)
+	vm->data.vm = vm;
+	vm->data.compiler = NULL;
 
 	reset_stack(vm);
 	vm->data.open_upvalues = NULL;
 	vm->data.allocated = 0;
 	vm->data.next_gc = GC_HEAP_INITIAL;
 
-	stack_init(&vm->data.grays, 0, sizeof(Obj*), NULL);
+	stack_init(&vm->data.grays, 0, sizeof(Obj*), realloc);
 	vm->data.objects = NULL;
 	value_array_init(&vm->data.constants);
 	table_init(&vm->data.strings);
 	table_init(&vm->data.globals);
 
 	define_native(vm, "clock", native_clock);
-
-	#undef GC_HEAP_INITIAL
 }
 
 void vm_destroy(VM* vm)
@@ -72,6 +88,7 @@ void vm_destroy(VM* vm)
 	value_array_destroy(&vm->data.constants);
 	free_objects(&vm->data.objects);
 	stack_destroy(&vm->data.grays);
+	vm->data.vm = NULL;
 }
 
 static void push(VM* vm, Value value)
@@ -99,9 +116,11 @@ static bool value_is_falsey(Value value)
 
 static void concatenate_strings(VM* vm)
 {
-	const ObjString* b = value_as_string(pop(vm));
-	const ObjString* a = value_as_string(pop(vm));
+	const ObjString* b = value_as_string(peek(vm, 0));
+	const ObjString* a = value_as_string(peek(vm, 1));
 	ObjString* c = obj_string_concat(&vm->data.objects, &vm->data.strings, a, b);
+	pop(vm);
+	pop(vm);
 	push(vm, obj_value((Obj*)c));
 }
 
@@ -127,12 +146,15 @@ static void runtime_error(VM* vm, const char* format, ...)
 	reset_stack(vm);
 }
 
-// Should only be called during vm_init() !
+// Should only be called during vm_init() because it uses initial stack slots.
 static void define_native(VM* vm, const char* name, NativeFn function)
 {
-	ObjString* binding = make_obj_string(&vm->data.objects, &vm->data.strings, name, strlen(name));
-	Value native = obj_value((Obj*)make_obj_native(&vm->data.objects, function));
-	table_put(&vm->data.globals, binding, native);
+	push(vm, obj_value((Obj*)make_obj_string(&vm->data.objects, &vm->data.strings,
+	                                         name, strlen(name))));
+	push(vm, obj_value((Obj*)make_obj_native(&vm->data.objects, function)));
+	table_put(&vm->data.globals, value_as_string(peek(vm, 1)), peek(vm, 0));
+	pop(vm);
+	pop(vm);
 }
 
 static bool call(VM* vm, ObjClosure* closure, int argc)
@@ -441,7 +463,9 @@ InterpretResult vm_interpret(VM* vm, const char* source)
 	if (main == NULL) return INTERPRET_COMPILE_ERROR;
 
 	// setup initial call frame
+	push(vm, obj_value((Obj*)main));
 	ObjClosure* program = make_obj_closure(&vm->data.objects, main);
+	pop(vm);
 	push(vm, obj_value((Obj*)program));
 	call(vm, program, 0);
 
