@@ -132,8 +132,10 @@ static void emit_bytes(Parser* parser, uint8_t byte1, uint8_t byte2)
 
 static void error_at(Parser* parser, const Token* token, const char* message)
 {
-	if (parser->panic) return;
-	else parser->panic = true;
+	if (parser->panic)
+		return;
+	else
+		parser->panic = true;
 
 	fprintf(stderr, "[line %d] Error", token->line);
 
@@ -173,9 +175,12 @@ static bool check(const Parser* parser, TokenType type)
 
 static bool match(Parser* parser, TokenType type)
 {
-	if (!check(parser, type)) return false;
-	advance(parser);
-	return true;
+	if (!check(parser, type)) {
+		return false;
+	} else {
+		advance(parser);
+		return true;
+	}
 }
 
 static void consume(Parser* parser, TokenType type, const char* message)
@@ -666,8 +671,8 @@ static void synchronize(Parser* parser)
 			case TOKEN_WHILE:
 			case TOKEN_PRINT:
 			case TOKEN_RETURN:
-			return;
-			default: /* Keep looking for sync point. */ ;
+				return;
+			default: /* Keep looking for sync point. */;
 		}
 		advance(parser);
 	}

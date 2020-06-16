@@ -5,7 +5,7 @@
 #include <assert.h>
 
 #include <sgl/stack.h>
-#include <sgl/core.h> // byte_t
+#include <sgl/core.h> // byte_t, CONTAINER_OF
 
 #include "vm.h"
 #include "common.h" // DEBUG_LOG_GC
@@ -14,64 +14,71 @@
 #include "compiler.h" // Compiler
 
 
-static void debug_noop(const char* why)
-{
-#if DEBUG_LOG_GC
-	printf("%p allocate 0 for %s\n", NULL, why);
-#endif
-}
+struct allocation {
+	size_t size;
+	byte_t block[];
+};
 
-static void debug_free(void* ptr, const char* why)
+static void* sized_malloc(Environment* env, size_t size, const char* why)
 {
-#if DEBUG_LOG_GC
-	printf("%p free type %s\n", ptr, why);
-#endif
-}
+	if (size == 0)
+		return NULL;
 
-static void debug_alloc(void* ptr, size_t size, const char* why)
-{
-#if DEBUG_LOG_GC
-	printf("%p allocate %ld for %s\n", ptr, size, why);
-#endif
-}
+	struct allocation* memory = malloc(sizeof(struct allocation) + size);
+	if (memory == NULL)
+		return NULL;
 
-static void* sized_malloc(Environment* env, size_t size)
-{
-	byte_t* base = malloc(sizeof(size_t) + size);
-	if (base == NULL) return NULL;
-	byte_t* block = base + sizeof(size_t);
-	*(size_t*)base = size;
+	memory->size = size;
+
 	env->allocated += size;
-	return block;
+#if DEBUG_LOG_GC
+	printf("%p allocate %ld for %s\n", &memory->block, size, why);
+#endif
+
+	return &memory->block;
 }
 
-static void sized_free(Environment* env, void* ptr)
+static void sized_free(Environment* env, void* ptr, const char* why)
 {
-	if (ptr == NULL) return;
-	byte_t* block = ptr;
-	byte_t* base = block - sizeof(size_t);
-	const size_t size = *(size_t*)base;
-	free(base);
+	if (ptr == NULL)
+		return;
+
+	struct allocation* allocation = CONTAINER_OF(ptr, struct allocation, block);
+	const size_t size = allocation->size;
+	free(allocation);
+
 	env->allocated -= size;
+#if DEBUG_LOG_GC
+	printf("%p free %ld for %s\n", ptr, size, why);
+#endif
 }
 
-static void* sized_realloc(Environment* env, void* ptr, size_t new_size)
+static void* sized_realloc(Environment* env, void* ptr, size_t size, const char* why)
 {
-	if (ptr == NULL) return sized_malloc(env, new_size);
+	if (ptr == NULL) {
+		return sized_malloc(env, size, why);
+	} else if (size == 0) {
+		sized_free(env, ptr, why);
+		return NULL;
+	}
 
-	byte_t* block = ptr;
-	byte_t* base = block - sizeof(size_t);
-	const size_t old_size = *(size_t*)base;
-	if (old_size >= new_size) return ptr;
+	struct allocation* allocation = CONTAINER_OF(ptr, struct allocation, block);
+	const size_t old_size = allocation->size;
+	if (size <= old_size)
+		return ptr;
 
-	byte_t* new_base = realloc(base, sizeof(size_t) + new_size);
-	if (new_base == NULL) return NULL;
+	struct allocation* new = realloc(allocation, sizeof(struct allocation) + size);
+	if (new == NULL)
+		return NULL;
 
-	base = new_base;
-	block = base + sizeof(size_t);
-	*(size_t*)base = new_size;
-	env->allocated += new_size - old_size;
-	return block;
+	new->size = size;
+
+	env->allocated += size - old_size;
+#if DEBUG_LOG_GC
+	printf("%p grow %ld for %s\n", &new->block, size - old_size, why);
+#endif
+
+	return &new->block;
 }
 
 void* reallocate(void* ptr, size_t size, const char* why)
@@ -84,29 +91,15 @@ void* reallocate(void* ptr, size_t size, const char* why)
 		return realloc(ptr, size);
 	}
 
-	void* mem = NULL;
-
-	if (ptr == NULL && size == 0) {
-		debug_noop(why);
-		return ptr;
-	} else if (ptr == NULL && size != 0) {
-		mem = sized_malloc(env, size);
-	} else if (ptr != NULL && size == 0) {
-		debug_free(ptr, why);
-		sized_free(env, ptr);
-		return ptr;
-	} else if (ptr != NULL && size != 0) {
-		mem = sized_realloc(env, ptr, size);
-	}
-
-	debug_alloc(mem, size, why);
-	if (mem == NULL) {
+	void* mem = sized_realloc(env, ptr, size, why);
+	if (size != 0 && mem == NULL) {
 		fprintf(stderr, "Out of memory for '%s'!\n", why);
 		exit(74);
 	}
 
 #if DEBUG_STRESS_GC
-	collect_garbage();
+	if (size != 0) // only invoke GC on allocations
+		collect_garbage();
 #else
 	if (env->allocated > env->next_gc)
 		collect_garbage();
@@ -117,7 +110,8 @@ void* reallocate(void* ptr, size_t size, const char* why)
 
 static void mark_object(Environment* env, Obj* object)
 {
-	if (object == NULL || object->marked) return;
+	if (object == NULL || object->marked)
+		return;
 
 	object->marked = true;
 #if DEBUG_LOG_GC
@@ -126,7 +120,7 @@ static void mark_object(Environment* env, Obj* object)
 	printf("\n");
 #endif
 
-	// objects which don't hold references don't need to be marked gray
+	// objects which don't hold references don't need to be traced
 	if (object->type == OBJ_NATIVE || object->type == OBJ_STRING)
 		return;
 	else
@@ -135,9 +129,7 @@ static void mark_object(Environment* env, Obj* object)
 
 static void mark_value(Environment* env, Value value)
 {
-	if (!value_is_obj(value))
-		return;
-	else
+	if (value_is_obj(value))
 		mark_object(env, value_as_obj(value));
 }
 
@@ -221,13 +213,12 @@ static void sweep(Environment* env)
 			object = object->next;
 		} else {
 			Obj* white = object;
-			object = object->next;
-			if (previous != NULL) {
-				previous->next = object;
-			} else {
-				env->objects = object;
-			}
 			free_obj(white);
+			object = object->next;
+			if (previous != NULL)
+				previous->next = object;
+			else
+				env->objects = object;
 		}
 	}
 }
@@ -235,7 +226,8 @@ static void sweep(Environment* env)
 static void remove_each_white(const ObjString* key, Value* value, void* table_ptr)
 {
 	Table* table = (Table*)table_ptr;
-	if (!key->obj.marked) table_delete(table, key);
+	if (!key->obj.marked)
+		table_delete(table, key);
 	/* @NOTE: modifying the table while iterating through it is dangerous, this
 	only works because we know the implementation of table_delete/map_delete */
 }

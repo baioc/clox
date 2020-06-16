@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h> // malloc, free, NULL
-#include <sysexits.h>
 #include <errno.h>
 
 #include "vm.h"
@@ -9,6 +8,7 @@
 static int repl(void)
 {
 	VM vm;
+	Environment* env = set_current_lox_environment(&vm.data);
 	vm_init(&vm);
 
 	for (char line[1024];;) {
@@ -21,9 +21,11 @@ static int repl(void)
 	}
 
 	vm_destroy(&vm);
+	set_current_lox_environment(env);
 	return 0;
 }
 
+// Copies file at PATH to a null-terminated buffer, returned pointer must be free()d.
 static char* read_file(const char* path)
 {
 	FILE* file = fopen(path, "rb");
@@ -54,7 +56,8 @@ static char* read_file(const char* path)
 	return buffer;
 }
 
-static int run_file(const char* filename) {
+static int run_file(const char* filename)
+{
 	VM vm;
 	Environment* env = set_current_lox_environment(&vm.data);
 	vm_init(&vm);
@@ -66,9 +69,9 @@ static int run_file(const char* filename) {
 	vm_destroy(&vm);
 	set_current_lox_environment(env);
 
-	if (result == INTERPRET_COMPILE_ERROR) return EX_DATAERR;
-	if (result == INTERPRET_RUNTIME_ERROR) return EX_SOFTWARE;
-	else return EX_OK;
+	if (result == INTERPRET_COMPILE_ERROR) return 65;
+	if (result == INTERPRET_RUNTIME_ERROR) return 70;
+	else return 0;
 }
 
 int main(int argc, const char* argv[])
@@ -79,6 +82,6 @@ int main(int argc, const char* argv[])
 		return run_file(argv[1]);
 	} else {
 		fprintf(stderr, "Usage: clox [path]\n");
-		return EX_USAGE;
+		return 64;
 	}
 }

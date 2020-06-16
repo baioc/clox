@@ -27,9 +27,9 @@ static bool at_end(const Scanner* scanner)
 }
 
 // Like peek(), but for one character past the current one.
-static char peek_next(const Scanner* scanner) {
-	if (at_end(scanner)) return '\0';
-	else return scanner->current[1];
+static char peek_next(const Scanner* scanner)
+{
+	return at_end(scanner) ? '\0' : scanner->current[1];
 }
 
 // Consume the current character and returns it.
@@ -100,7 +100,9 @@ static Token error_token(const Scanner* scanner, const char* message)
 static Token scan_string(Scanner* scanner)
 {
 	while (peek(scanner) != '"' && !at_end(scanner)) {
-		if (peek(scanner) == '\n') scanner->line++;
+		if (peek(scanner) == '\n') {
+			scanner->line++;
+		}
 		advance(scanner);
 	}
 
@@ -131,17 +133,13 @@ static Token scan_number(Scanner* scanner)
 	return make_token(scanner, TOKEN_NUMBER);
 }
 
-static bool is_alpha(char c) {
-	return ('a' <= c && c <= 'z')
-	    || ('A' <= c && c <= 'Z')
-	    || c == '_';
+static bool is_alpha(char c)
+{
+	return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || c == '_';
 }
 
-static TokenType check_keyword(const Scanner* scanner,
-                               int start,
-                               const char* expected,
-                               int length,
-                               TokenType type)
+static TokenType check_keyword(const Scanner* scanner, int start,
+                               const char* expected, int length, TokenType type)
 {
 	const int current_len = scanner->current - scanner->start;
 	const int keyword_len = start + length;
@@ -200,11 +198,14 @@ static Token scan_token_(Scanner* scanner)
 	skip_whitespace(scanner);
 	scanner->start = scanner->current;
 
-	if (at_end(scanner)) return make_token(scanner, TOKEN_EOF);
+	if (at_end(scanner))
+		return make_token(scanner, TOKEN_EOF);
 
 	const char c = advance(scanner);
-	if (is_alpha(c)) return scan_identifier(scanner);
-	else if (is_digit(c)) return scan_number(scanner);
+	if (is_alpha(c))
+		return scan_identifier(scanner);
+	else if (is_digit(c))
+		return scan_number(scanner);
 
 	switch (c) {
 		case '(': return make_token(scanner, TOKEN_LEFT_PAREN);

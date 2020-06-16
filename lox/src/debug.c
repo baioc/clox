@@ -88,6 +88,9 @@ int disassemble_instruction(const Chunk* chunk, const ValueArray* constants, int
 		CASE_JUMP(OP_LOOP, -1);
 		CASE_BYTE(OP_CALL);
 		case OP_CLOSURE: {
+			const intptr_t start = offset;
+
+			// first two bytes are opcode and pool index
 			offset++;
 			const uint8_t id = chunk_get_byte(chunk, offset++);
 			printf("%-16s %4d ", "OP_CLOSURE", id);
@@ -95,6 +98,7 @@ int disassemble_instruction(const Chunk* chunk, const ValueArray* constants, int
 			value_print(closure);
 			printf("\n");
 
+			// next bytes index the closure's upvalues
 			ObjFunction* function = value_as_function(closure);
 			for (int i = 0; i < function->upvalues; ++i) {
 				const int local = chunk_get_byte(chunk, offset++);
@@ -103,7 +107,7 @@ int disassemble_instruction(const Chunk* chunk, const ValueArray* constants, int
 				       offset - 2, local ? "local" : "upvalue", index);
 			}
 
-			return offset;
+			return offset - start;
 		}
 		CASE_SIMPLE(OP_CLOSE_UPVALUE);
 		CASE_SIMPLE(OP_RETURN);

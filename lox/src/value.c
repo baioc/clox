@@ -46,13 +46,11 @@ static void* realloc_value_array(void* ptr, size_t size)
 	return reallocate(ptr, size, "ValueArray");
 }
 
-// Initializes an empty ARRAY. value_array_destroy() must be called on it later.
 void value_array_init(ValueArray* array)
 {
 	list_init(array, 0, sizeof(Value), realloc_value_array);
 }
 
-// Deallocates any resources acquired by value_array_init() on ARRAY.
 void value_array_destroy(ValueArray* array)
 {
 	list_destroy(array);

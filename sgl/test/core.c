@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <string.h> // strcmp
+#include <stdlib.h> // malloc, free
 
 
 static void swap_primitives(void)
@@ -56,10 +57,35 @@ static void lerp_search(void)
 	assert(found == NULL);
 }
 
+struct string {
+	index_t length;
+	char characters[];
+};
+
+static void struct_base_address(void)
+{
+	const index_t len = sizeof("TEST");
+	struct string* str = malloc(sizeof(struct string) + len);
+	assert(str != NULL);
+
+	char* c_str = str->characters;
+	c_str[0] = 'T';
+	c_str[1] = 'E';
+	c_str[2] = 'S';
+	c_str[3] = 'T';
+	c_str[4] = '\0';
+	assert(strcmp(c_str, "TEST") == 0);
+
+	struct string* string = CONTAINER_OF(c_str, struct string, characters);
+	assert(string == str);
+}
+
 err_t main(int argc, const char* argv[])
 {
 	swap_primitives();
 	swap_pointers();
 	static_array_size();
+	lerp_search();
+	struct_base_address();
 	return 0;
 }

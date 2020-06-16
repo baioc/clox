@@ -44,7 +44,7 @@ int constant_add(ValueArray* constants, Value value)
 	return index;
 }
 
-Value constant_get(const ValueArray* constants, uint8_t index)
+inline Value constant_get(const ValueArray* constants, uint8_t index)
 {
 	return value_array_get(constants, index);
 }
@@ -146,7 +146,6 @@ static void runtime_error(VM* vm, const char* format, ...)
 	reset_stack(vm);
 }
 
-// Should only be called during vm_init() because it uses initial stack slots.
 static void define_native(VM* vm, const char* name, NativeFn function)
 {
 	push(vm, obj_value((Obj*)make_obj_string(&vm->data.objects, &vm->data.strings,

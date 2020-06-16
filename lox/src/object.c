@@ -113,13 +113,16 @@ static ObjString* make_obj_string_copy(Obj** objects, Table* strings,
 	char* chars = reallocate(NULL, n + 1, "string");
 	memcpy(chars, str, n);
 	chars[n] = '\0';
+
 	ObjString* string = ALLOCATE_OBJ(objects, ObjString, OBJ_STRING);
 	string->hash = hash;
 	string->length = n;
 	string->chars = chars;
+
 	string->obj.marked = true;
 	table_put(strings, string, nil_value());
 	string->obj.marked = false;
+
 	return string;
 }
 

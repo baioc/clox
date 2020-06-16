@@ -1,7 +1,7 @@
 #ifndef SGL_CORE_H
 #define SGL_CORE_H
 
-#include <stddef.h> // size_t, NULL
+#include <stddef.h> // size_t, NULL, offsetof
 #include <stdbool.h> // bool
 
 // Given that C is a byte-manipulation language, this should be standard.
@@ -45,6 +45,10 @@ typedef int (*compare_fn_t)(const void* a, const void* b);
 
 // Gets number of elements of static array ARR.
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+
+// Given address PTR of field MEMBER, finds address of its CONTAINER struct.
+#define CONTAINER_OF(ptr, container, member) \
+	((container*)((byte_t*)(ptr) - offsetof(container, member)))
 
 // Swaps the memory contents of the first SIZE bytes pointed to by A and B.
 void swap(void *a, void *b, size_t size);

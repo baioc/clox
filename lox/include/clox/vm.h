@@ -81,7 +81,7 @@ void vm_init(VM* vm);
 // Deallocates any resources acquired by vm_init().
 void vm_destroy(VM* vm);
 
-// Executes VM's main entrypoint using CHUNK.
+// Executes the VM over the given SOURCE Lox program.
 InterpretResult vm_interpret(VM* vm, const char* source);
 
 #endif // CLOX_VM_H

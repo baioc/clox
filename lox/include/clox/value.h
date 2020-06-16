@@ -86,8 +86,10 @@ inline Obj* value_as_obj(Value value)
 	return value.as.obj;
 }
 
+// Pretty-prints VALUE to stdout.
 void value_print(Value value);
 
+// Compare values A and B for equality.
 bool value_equal(Value a, Value b);
 
 // Initializes an empty ARRAY. value_array_destroy() must be called on it later.
