@@ -55,8 +55,7 @@ void swap(void *a, void *b, size_t size);
  *
  * Returns a pointer to the element KEY or NULL when it could not be found.
  */
-void* lerpsearch(const void* key, const void* ordered_array, size_t n,
-                 size_t size, int (*compar)(const void*, const void*),
+void* lerpsearch(const void* key, const void* ordered_array, size_t n, size_t size, compare_fn_t,
                  size_t (*lerp)(const void*, const void*, const void*, size_t, size_t));
 
 #endif // SGL_CORE_H

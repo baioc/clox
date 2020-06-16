@@ -8,7 +8,8 @@ It is written in standard C99 and uses core features such as [Flexible Array Mem
 ## Notes
 
 Please note that the code here - just like in most Lox implementations - is somewhat lacking in internal algorithmic documentation and relies on the book for that purpose.
-Other than that, it follows a slightly more "disciplined" C style than what is in the book, meaning there are no global variables (global state is only used for the Garbage Collector, with accessor functions) and function-like preprocessor macros are limited to the file where they are defined (macros in headers were substituted by inline functions).
+
+In this version, there are no global variables (global state is only used for the Garbage Collector, with accessor functions) and function-like preprocessor macros are limited to the file where they are defined (macros in headers were substituted by inline functions).
 
 
 ## Licensing
