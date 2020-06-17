@@ -18,8 +18,14 @@
 #endif
 
 
+typedef struct ClassCompiler {
+	struct ClassCompiler* enclosing;
+	Token name;
+} ClassCompiler;
+
 typedef struct {
 	Compiler compiler; // syntax-directed translation
+	ClassCompiler* class;
 	Scanner scanner;
 	Token current;
 	Token previous;
@@ -61,6 +67,7 @@ static void and(Parser* parser, bool can_assign);
 static void or(Parser* parser, bool can_assign);
 static void call(Parser* parser, bool can_assign);
 static void dot(Parser* parser, bool can_assign);
+static void this(Parser* parser, bool can_assign);
 
 static void declaration(Parser* parser);
 static void statement(Parser* parser);
@@ -101,7 +108,7 @@ static ParseRule rules[] = {
 	[TOKEN_PRINT]         = { NULL,     NULL,   PREC_NONE       },
 	[TOKEN_RETURN]        = { NULL,     NULL,   PREC_NONE       },
 	[TOKEN_SUPER]         = { NULL,     NULL,   PREC_NONE       },
-	[TOKEN_THIS]          = { NULL,     NULL,   PREC_NONE       },
+	[TOKEN_THIS]          = { this,     NULL,   PREC_NONE       },
 	[TOKEN_TRUE]          = { literal,  NULL,   PREC_NONE       },
 	[TOKEN_VAR]           = { NULL,     NULL,   PREC_NONE       },
 	[TOKEN_WHILE]         = { NULL,     NULL,   PREC_NONE       },
@@ -352,14 +359,25 @@ static void print_statement(Parser* parser)
 	emit_byte(parser, OP_PRINT);
 }
 
+static void emit_return(Parser* parser)
+{
+	if (parser->compiler.type == TYPE_INITIALIZER) {
+		emit_bytes(parser, OP_GET_LOCAL, 0);
+	} else {
+		emit_byte(parser, OP_NIL);
+	}
+	emit_byte(parser, OP_RETURN);
+	// @TODO: avoid emitting unreachable OP_NIL & OP_RETURN after actual return
+}
+
 static void return_statement(Parser* parser)
 {
-	if (parser->compiler.type == TYPE_SCRIPT)
+	if (parser->compiler.type == TYPE_SCRIPT) {
 		error(parser, "Cannot return from top-level code.");
-
-	if (match(parser, TOKEN_SEMICOLON)) {
-		emit_byte(parser, OP_NIL);
-		emit_byte(parser, OP_RETURN);
+	} else if (parser->compiler.type == TYPE_INITIALIZER) {
+		error(parser, "Cannot return a value from an initializer.");
+	} else if (match(parser, TOKEN_SEMICOLON)) {
+		emit_return(parser);
 	} else {
 		expression(parser);
 		consume(parser, TOKEN_SEMICOLON, "Expect ';' after return value.");
@@ -480,18 +498,22 @@ static void compile_begin(Compiler* compiler, FunctionType type, Compiler* enclo
 	compiler->local_count = 0;
 	compiler->scope_depth = 0;
 
-	// reserve stack slot 0 (with a voldemort name so it can't be referred to)
+	// reserve first local slot for "this" pointer or a voldemort variable
 	Local* local = &compiler->locals[compiler->local_count++];
 	local->depth = 0;
-	local->name.start = "";
-	local->name.length = 0;
+	local->captured = false;
+	if (type != TYPE_FUNCTION) {
+		local->name.start = "this";
+		local->name.length = 4;
+	} else {
+		local->name.start = "";
+		local->name.length = 0;
+	}
 }
 
 static ObjFunction* compile_end(Parser* parser)
 {
-	// @TODO: avoid emitting OP_NIL & OP_RETURN when there's already a return
-	emit_byte(parser, OP_NIL);
-	emit_byte(parser, OP_RETURN);
+	emit_return(parser);
 
 #if DEBUG_PRINT_CODE
 	if (!parser->error) {
@@ -546,6 +568,17 @@ static void function(Parser* p, FunctionType type)
 		emit_byte(p, compiler.upvalues[i].local ? 1 : 0);
 		emit_byte(p, compiler.upvalues[i].index);
 	}
+}
+
+static void method(Parser* parser)
+{
+	consume(parser, TOKEN_IDENTIFIER, "Expect method name.");
+	const Token name = parser->previous;
+	const uint8_t id = make_string_constant(parser, name.start, name.length);
+	FunctionType type = name.length == 4 && memcmp(name.start, "init", 4) == 0
+	                    ? TYPE_INITIALIZER : TYPE_METHOD;
+	function(parser, type);
+	emit_bytes(parser, OP_METHOD, id);
 }
 
 static void for_statement(Parser* parser)
@@ -623,6 +656,77 @@ static void statement(Parser* parser)
 	}
 }
 
+
+static int resolve_local(Parser* parser, const Compiler* compiler, const Token* name)
+{
+	// name lookup going from the top to the bottom of the locals stack
+	for (int i = compiler->local_count - 1; i >= 0; --i) {
+		const Local* local = &compiler->locals[i];
+		if (token_equal(name, &local->name)) {
+			if (local->depth < 0)
+				error(parser, "Cannot read local variable in its own initializer.");
+			return i;
+		}
+	}
+	return -1;
+}
+
+static int resolve_upvalue(Parser* parser, Compiler* compiler, const Token* name)
+{
+	if (compiler->enclosing == NULL) return -1;
+
+	// either capture a reference to a local variable
+	const int local = resolve_local(parser, compiler->enclosing, name);
+	if (local >= 0) {
+		compiler->enclosing->locals[local].captured = true;
+		return add_upvalue(parser, compiler, (uint8_t)local, true);
+	}
+
+	// or to an existing upvalue in the outer compilation context
+	const int upvalue = resolve_upvalue(parser, compiler->enclosing, name);
+	if (upvalue >= 0)
+		return add_upvalue(parser, compiler, (uint8_t)upvalue, false);
+
+	return -1;
+}
+
+static void named_variable(Parser* parser, const Token* name, bool can_assign)
+{
+	uint8_t get_op, set_op;
+	int id = resolve_local(parser, &parser->compiler, name);
+	if (id >= 0) {
+		get_op = OP_GET_LOCAL;
+		set_op = OP_SET_LOCAL;
+	} else if ((id = resolve_upvalue(parser, &parser->compiler, name)) >= 0) {
+		get_op = OP_GET_UPVALUE;
+		set_op = OP_SET_UPVALUE;
+	} else {
+		id = make_string_constant(parser, name->start, name->length);
+		get_op = OP_GET_GLOBAL;
+		set_op = OP_SET_GLOBAL;
+	}
+
+	if (can_assign && match(parser, TOKEN_EQUAL)) {
+		expression(parser);
+		emit_bytes(parser, set_op, (uint8_t)id);
+	} else {
+		emit_bytes(parser, get_op, (uint8_t)id);
+	}
+}
+
+static void variable(Parser* parser, bool can_assign)
+{
+	named_variable(parser, &parser->previous, can_assign);
+}
+
+static void this(Parser* parser, bool can_assign)
+{
+	if (parser->class == NULL)
+		error(parser, "Cannot use 'this' outside of a class.");
+	else
+		variable(parser, false);
+}
+
 static void function_declaration(Parser* parser)
 {
 	const uint8_t var = parse_variable(parser, "Expect function name.");
@@ -631,18 +735,28 @@ static void function_declaration(Parser* parser)
 	define_variable(parser, var);
 }
 
-static void class_declaration(Parser* parser)
+static void class_declaration(Parser* p)
 {
-	consume(parser, TOKEN_IDENTIFIER, "Expect class name.");
-	const uint8_t id = make_string_constant(parser, parser->previous.start,
-	                                                parser->previous.length);
-	declare_variable(parser);
+	consume(p, TOKEN_IDENTIFIER, "Expect class name.");
+	const Token name = p->previous;
+	const uint8_t id = make_string_constant(p, p->previous.start, p->previous.length);
+	declare_variable(p);
 
-	emit_bytes(parser, OP_CLASS, id);
-	define_variable(parser, id);
+	emit_bytes(p, OP_CLASS, id);
+	define_variable(p, id);
 
-	consume(parser, TOKEN_LEFT_BRACE, "Expect '{' before class body.");
-	consume(parser, TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
+	ClassCompiler class;
+	class.name = name;
+	class.enclosing = p->class;
+	p->class = &class;
+
+	named_variable(p, &name, false); // class on top of the stack for methods
+	consume(p, TOKEN_LEFT_BRACE, "Expect '{' before class body.");
+	while (!check(p, TOKEN_RIGHT_BRACE) && !check(p, TOKEN_EOF)) method(p);
+	consume(p, TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
+	emit_byte(p, OP_POP); // then we pop it
+
+	p->class = class.enclosing;
 }
 
 static void and(Parser* parser, bool can_assign)
@@ -808,68 +922,6 @@ static void string(Parser* parser, bool can_assign)
 	emit_bytes(parser, OP_CONSTANT, id);
 }
 
-static int resolve_local(Parser* parser, const Compiler* compiler, const Token* name)
-{
-	// name lookup going from the top to the bottom of the locals stack
-	for (int i = compiler->local_count - 1; i >= 0; --i) {
-		const Local* local = &compiler->locals[i];
-		if (token_equal(name, &local->name)) {
-			if (local->depth < 0)
-				error(parser, "Cannot read local variable in its own initializer.");
-			return i;
-		}
-	}
-	return -1;
-}
-
-static int resolve_upvalue(Parser* parser, Compiler* compiler, const Token* name)
-{
-	if (compiler->enclosing == NULL) return -1;
-
-	// either capture a reference to a local variable
-	const int local = resolve_local(parser, compiler->enclosing, name);
-	if (local >= 0) {
-		compiler->enclosing->locals[local].captured = true;
-		return add_upvalue(parser, compiler, (uint8_t)local, true);
-	}
-
-	// or to an existing upvalue in the outer compilation context
-	const int upvalue = resolve_upvalue(parser, compiler->enclosing, name);
-	if (upvalue >= 0)
-		return add_upvalue(parser, compiler, (uint8_t)upvalue, false);
-
-	return -1;
-}
-
-static void named_variable(Parser* parser, const Token* name, bool can_assign)
-{
-	uint8_t get_op, set_op;
-	int id = resolve_local(parser, &parser->compiler, name);
-	if (id >= 0) {
-		get_op = OP_GET_LOCAL;
-		set_op = OP_SET_LOCAL;
-	} else if ((id = resolve_upvalue(parser, &parser->compiler, name)) >= 0) {
-		get_op = OP_GET_UPVALUE;
-		set_op = OP_SET_UPVALUE;
-	} else {
-		id = make_string_constant(parser, name->start, name->length);
-		get_op = OP_GET_GLOBAL;
-		set_op = OP_SET_GLOBAL;
-	}
-
-	if (can_assign && match(parser, TOKEN_EQUAL)) {
-		expression(parser);
-		emit_bytes(parser, set_op, (uint8_t)id);
-	} else {
-		emit_bytes(parser, get_op, (uint8_t)id);
-	}
-}
-
-static void variable(Parser* parser, bool can_assign)
-{
-	named_variable(parser, &parser->previous, can_assign);
-}
-
 static void register_string_constant(const ObjString* key, Value* val, void* p)
 {
 	const uint8_t id = make_constant((Parser*)p, obj_value((Obj*)key));
@@ -880,6 +932,7 @@ ObjFunction* compile(const char* source, Environment* data)
 {
 	// begin compilation
 	Parser parser = { .error = false, .panic = false, .data = data };
+	parser.class = NULL;
 	data->compiler = &parser.compiler;
 	compile_begin(&parser.compiler, TYPE_SCRIPT, NULL);
 	parser.compiler.subroutine = make_obj_function(&data->objects);

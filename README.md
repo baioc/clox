@@ -1,6 +1,6 @@
 # clox
 
-This is my implementation of Robert Nystrom's [Crafting Interpreters](http://www.craftinginterpreters.com/) single-pass compiler and bytecode virtual machine for the Lox language.
+This is my implementation of Robert Nystrom's [Crafting Interpreters](http://www.craftinginterpreters.com/) single-pass compiler and bytecode virtual machine for the [Lox](https://www.craftinginterpreters.com/the-lox-language.html) programming language.
 
 It is written in standard C99 and uses core features such as [Flexible Array Members (FAMs)](https://en.wikipedia.org/wiki/Flexible_array_member), [designated struct initializers](https://gcc.gnu.org/onlinedocs/gcc/Designated-Inits.html) and [Variable-Length Arrays (VLAs)](https://en.wikipedia.org/wiki/Variable-length_array).
 
@@ -9,7 +9,7 @@ It is written in standard C99 and uses core features such as [Flexible Array Mem
 
 Please note that the code here - just like in most Lox implementations - is somewhat lacking in internal algorithmic documentation and relies on the book for that purpose.
 
-In this version, there are no global variables (global state is only used for the Garbage Collector, with accessor functions) and function-like preprocessor macros are limited to the file where they are defined (macros in headers were substituted by inline functions).
+In this version there are no global variables (global state is only used for the Garbage Collector, with accessor functions) and function-like preprocessor macros are limited to the file where they are defined (macros in headers were substituted by inline functions).
 
 
 ## Licensing

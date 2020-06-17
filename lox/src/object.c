@@ -19,6 +19,7 @@ extern inline bool value_is_closure(Value value);
 extern inline bool value_is_native(Value value);
 extern inline bool value_is_class(Value value);
 extern inline bool value_is_instance(Value value);
+extern inline bool value_is_method(Value value);
 
 extern inline ObjString* value_as_string(Value value);
 extern inline char* value_as_c_str(Value value);
@@ -27,6 +28,7 @@ extern inline ObjClosure* value_as_closure(Value value);
 extern inline NativeFn value_as_native(Value value);
 extern inline ObjClass* value_as_class(Value value);
 extern inline ObjInstance* value_as_instance(Value value);
+extern inline ObjBoundMethod* value_as_method(Value value);
 
 static void print_function(ObjFunction* function)
 {
@@ -60,7 +62,11 @@ void obj_print(Value value)
 		case OBJ_INSTANCE:
 			printf("%s instance", value_as_instance(value)->class->name->chars);
 			break;
+		case OBJ_BOUND_METHOD:
+			print_function(value_as_method(value)->method->function);
+			break;
 		default:
+			fprintf(stderr, "Invalid object type %d during print.\n", obj_type(value));
 			assert(false);
 	}
 }
@@ -86,16 +92,30 @@ void free_obj(Obj* object)
 			FREE_OBJ(object, ObjClosure);
 			break;
 		}
-		case OBJ_UPVALUE: FREE_OBJ(object, ObjUpvalue); break;
-		case OBJ_NATIVE: FREE_OBJ(object, ObjNative); break;
-		case OBJ_CLASS: FREE_OBJ(object, ObjClass); break;
+		case OBJ_UPVALUE:
+			FREE_OBJ(object, ObjUpvalue);
+			break;
+		case OBJ_NATIVE:
+			FREE_OBJ(object, ObjNative);
+			break;
+		case OBJ_CLASS: {
+			ObjClass* class = (ObjClass*)object;
+			table_destroy(&class->methods);
+			FREE_OBJ(object, ObjClass);
+			break;
+		}
 		case OBJ_INSTANCE: {
 			ObjInstance* instance = (ObjInstance*)object;
 			table_destroy(&instance->fields);
 			FREE_OBJ(object, ObjInstance);
 			break;
 		}
-		default: assert(false);
+		case OBJ_BOUND_METHOD:
+			FREE_OBJ(object, ObjBoundMethod);
+			break;
+		default:
+			fprintf(stderr, "Invalid object type %d to be freed.\n", object->type);
+			assert(false);
 	}
 
 	#undef FREE_OBJ
@@ -214,6 +234,7 @@ ObjClass* make_obj_class(Obj** objects, ObjString* name)
 {
 	ObjClass* class = ALLOCATE_OBJ(objects, ObjClass, OBJ_CLASS);
 	class->name = name;
+	table_init(&class->methods); // initialized with 0 size, so it is GC safe
 	return class;
 }
 
@@ -223,6 +244,14 @@ ObjInstance* make_obj_instance(Obj** objects, ObjClass* class)
 	instance->class = class;
 	table_init(&instance->fields); // initialized with 0 size, so it is GC safe
 	return instance;
+}
+
+ObjBoundMethod* make_obj_method(Obj** objects, Value receiver, ObjClosure* method)
+{
+	ObjBoundMethod* bound = ALLOCATE_OBJ(objects, ObjBoundMethod, OBJ_BOUND_METHOD);
+	bound->receiver = receiver;
+	bound->method = method;
+	return bound;
 }
 
 #undef ALLOCATE_OBJ

@@ -48,6 +48,7 @@ typedef struct VM {
 	Value* stack_pointer;
 	Value stack[STACK_MAX];
 	Environment data;
+	ObjString* init_string;
 } VM;
 
 #undef STACK_MAX

@@ -114,6 +114,7 @@ int disassemble_instruction(const Chunk* chunk, const ValueArray* constants, int
 		CASE_SIMPLE(OP_CLOSE_UPVALUE);
 		CASE_SIMPLE(OP_RETURN);
 		CASE_CONSTANT(OP_CLASS);
+		CASE_CONSTANT(OP_METHOD);
 		default: printf("Unknown opcode %d\n", instruction); return 1;
 	}
 

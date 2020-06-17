@@ -152,6 +152,7 @@ static void mark_roots(Environment* env)
 
 	// globals
 	table_for_each(&env->globals, mark_each, env);
+	mark_object(env, (Obj*)env->vm->init_string);
 
 	// call frames
 	for (int i = 0; i < env->vm->frame_count; ++i)
@@ -189,16 +190,28 @@ static void blacken_object(Environment* env, Obj* object)
 			break;
 		case OBJ_NATIVE: case OBJ_STRING:
 			break;
-		case OBJ_CLASS:
-			mark_object(env, (Obj*)((ObjClass*)object)->name);
+		case OBJ_CLASS: {
+			ObjClass* class = (ObjClass*)object;
+			mark_object(env, (Obj*)class->name);
+			table_for_each(&class->methods, mark_each, env);
 			break;
+		}
 		case OBJ_INSTANCE: {
 			ObjInstance* instance = (ObjInstance*)object;
 			mark_object(env, (Obj*)instance->class);
 			table_for_each(&instance->fields, mark_each, env);
 			break;
 		}
-		default: assert(false);
+		case OBJ_BOUND_METHOD: {
+			ObjBoundMethod* bound = (ObjBoundMethod*)object;
+			mark_value(env, bound->receiver);
+			mark_object(env, (Obj*)bound->method);
+			// ^ technically not necessary: would be marked by instance's class
+			break;
+		}
+		default:
+			fprintf(stderr, "Invalid object type %d during GC tracing.\n", object->type);
+			assert(false);
 	}
 }
 

@@ -4,7 +4,6 @@
 #include <stdarg.h> // varargs
 #include <string.h> // strlen
 #include <time.h> // clock(), CLOCKS_PER_SEC
-#include <stdlib.h> // realloc
 #include <assert.h>
 
 #include <sgl/core.h> // ARRAY_SIZE
@@ -131,11 +130,14 @@ void vm_init(VM* vm)
 	vm->data.allocated = 0;
 	vm->data.next_gc = GC_HEAP_INITIAL;
 
-	stack_init(&vm->data.grays, 0, sizeof(Obj*), realloc);
+	stack_init(&vm->data.grays, 0, sizeof(Obj*), NULL);
+	vm->init_string = NULL;
 	vm->data.objects = NULL;
+
 	value_array_init(&vm->data.constants);
 	table_init(&vm->data.strings);
 	table_init(&vm->data.globals);
+	vm->init_string = make_obj_string(&vm->data.objects, &vm->data.strings, "init", 4);
 
 	define_native(vm, "clock", native_clock);
 	define_native(vm, "error", native_error);
@@ -151,6 +153,7 @@ void vm_destroy(VM* vm)
 	table_destroy(&vm->data.strings);
 	value_array_destroy(&vm->data.constants);
 	free_objects(&vm->data.objects);
+	vm->init_string = NULL;
 	stack_destroy(&vm->data.grays);
 	vm->data.vm = NULL;
 }
@@ -242,7 +245,8 @@ static bool call_value(VM* vm, Value callee, int argc)
 	if (!value_is_obj(callee)) goto FAIL;
 
 	switch (obj_type(callee)) {
-		case OBJ_CLOSURE: return call(vm, value_as_closure(callee), argc);
+		case OBJ_CLOSURE:
+			return call(vm, value_as_closure(callee), argc);
 		case OBJ_NATIVE: {
 			NativeFn native = value_as_native(callee);
 			vm->stack_pointer[- argc - 1] = nil_value();
@@ -262,9 +266,21 @@ static bool call_value(VM* vm, Value callee, int argc)
 			ObjClass* class = value_as_class(callee);
 			ObjInstance* instance = make_obj_instance(&vm->data.objects, class);
 			vm->stack_pointer[-(argc + 1)] = obj_value((Obj*)instance);
-			return true;
+			Value initializer;
+			if (table_get(&class->methods, vm->init_string, &initializer)) {
+				return call(vm, value_as_closure(initializer), argc);
+			} else if (argc != 0) {
+				runtime_error(vm, "Expected 0 arguments but got %d.", argc);
+				return false;
+			}
 		}
-		default: goto FAIL;
+		case OBJ_BOUND_METHOD: {
+			ObjBoundMethod* bound = value_as_method(callee);
+			vm->stack_pointer[-(argc + 1)] = bound->receiver;
+			return call(vm, bound->method, argc);
+		}
+		default:
+			goto FAIL;
 	}
 
 FAIL:
@@ -305,6 +321,27 @@ static void close_upvalues(VM* vm, Value* last)
 		upvalue->location = &upvalue->closed;
 		vm->data.open_upvalues = upvalue->next;
 	}
+}
+
+static void define_method(VM* vm, ObjString* name)
+{
+	const Value method = peek(vm, 0);
+	ObjClass* class = value_as_class(peek(vm, 1));
+	table_put(&class->methods, name, method);
+	pop(vm);
+}
+
+static bool bind_method(VM* vm, ObjClass* class, ObjString* name)
+{
+	Value meth;
+	if (!table_get(&class->methods, name, &meth)) {
+		return false;
+	}
+	ObjBoundMethod* bound = make_obj_method(&vm->data.objects,
+	                                        peek(vm, 0), value_as_closure(meth));
+	pop(vm);
+	push(vm, obj_value((Obj*)bound));
+	return true;
 }
 
 static void debug_trace_run(const VM* vm, const CallFrame* frame)
@@ -439,7 +476,7 @@ static InterpretResult run(VM* vm)
 				if (table_get(&instance->fields, name, &value)) {
 					pop(vm);
 					push(vm, value);
-				} else {
+				} else if (!bind_method(vm, instance->class, name)) {
 					runtime_error(vm, "Undefined property '%s'.", name->chars);
 					return INTERPRET_RUNTIME_ERROR;
 				}
@@ -538,7 +575,6 @@ static InterpretResult run(VM* vm)
 				if (!call_value(vm, callee, argc)) {
 					return INTERPRET_RUNTIME_ERROR;
 				}
-
 				frame = &vm->frames[vm->frame_count - 1];
 				break;
 			}
@@ -586,8 +622,13 @@ static InterpretResult run(VM* vm)
 				break;
 			}
 
+			case OP_METHOD:
+				define_method(vm, value_as_string(READ_CONSTANT()));
+				break;
+
 			default:
-				assert(false);
+				runtime_error(vm, "Invalid opcode %d\n", instruction);
+				return INTERPRET_COMPILE_ERROR;
 		}
 	}
 
