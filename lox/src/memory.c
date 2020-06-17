@@ -189,6 +189,15 @@ static void blacken_object(Environment* env, Obj* object)
 			break;
 		case OBJ_NATIVE: case OBJ_STRING:
 			break;
+		case OBJ_CLASS:
+			mark_object(env, (Obj*)((ObjClass*)object)->name);
+			break;
+		case OBJ_INSTANCE: {
+			ObjInstance* instance = (ObjInstance*)object;
+			mark_object(env, (Obj*)instance->class);
+			table_for_each(&instance->fields, mark_each, env);
+			break;
+		}
 		default: assert(false);
 	}
 }

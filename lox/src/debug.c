@@ -73,6 +73,8 @@ int disassemble_instruction(const Chunk* chunk, const ValueArray* constants, int
 		CASE_CONSTANT(OP_SET_GLOBAL);
 		CASE_BYTE(OP_GET_UPVALUE);
 		CASE_BYTE(OP_SET_UPVALUE);
+		CASE_CONSTANT(OP_GET_PROPERTY);
+		CASE_CONSTANT(OP_SET_PROPERTY);
 		CASE_SIMPLE(OP_EQUAL);
 		CASE_SIMPLE(OP_GREATER);
 		CASE_SIMPLE(OP_LESS);
@@ -111,6 +113,7 @@ int disassemble_instruction(const Chunk* chunk, const ValueArray* constants, int
 		}
 		CASE_SIMPLE(OP_CLOSE_UPVALUE);
 		CASE_SIMPLE(OP_RETURN);
+		CASE_CONSTANT(OP_CLASS);
 		default: printf("Unknown opcode %d\n", instruction); return 1;
 	}
 

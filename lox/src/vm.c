@@ -57,9 +57,68 @@ static void reset_stack(VM* vm)
 
 static void define_native(VM* vm, const char* name, NativeFn function);
 
-static Value native_clock(int argc, Value argv[])
+static bool native_clock(int argc, Value argv[])
 {
-	return number_value((double)clock() / CLOCKS_PER_SEC);
+	if (argc != 0) return false;
+	argv[-1] = number_value((double)clock() / CLOCKS_PER_SEC);
+	return true;
+}
+
+static bool native_error(int argc, Value argv[])
+{
+	if (argc == 1)
+		argv[-1] = argv[0];
+	return false;
+}
+
+static bool native_hasField(int argc, Value argv[])
+{
+	if (argc != 2) return false;
+	else if (!value_is_instance(argv[0])) return false;
+	else if (!value_is_string(argv[1])) return false;
+
+	ObjInstance* instance = value_as_instance(argv[0]);
+	const ObjString* field = value_as_string(argv[1]);
+	Value dummy;
+	argv[-1] = bool_value(table_get(&instance->fields, field, &dummy));
+	return true;
+}
+
+static bool native_getField(int argc, Value argv[])
+{
+	if (argc != 2) return false;
+	else if (!value_is_instance(argv[0])) return false;
+	else if (!value_is_string(argv[1])) return false;
+
+	ObjInstance* instance = value_as_instance(argv[0]);
+	const ObjString* field = value_as_string(argv[1]);
+	table_get(&instance->fields, field, &argv[-1]);
+	return true;
+}
+
+static bool native_setField(int argc, Value argv[])
+{
+	if (argc != 3) return false;
+	else if (!value_is_instance(argv[0])) return false;
+	else if (!value_is_string(argv[1])) return false;
+
+	ObjInstance* instance = value_as_instance(argv[0]);
+	const ObjString* field = value_as_string(argv[1]);
+	table_put(&instance->fields, field, argv[2]);
+	argv[-1] = argv[2];
+	return true;
+}
+
+static bool native_deleteField(int argc, Value argv[])
+{
+	if (argc != 2) return false;
+	else if (!value_is_instance(argv[0])) return false;
+	else if (!value_is_string(argv[1])) return false;
+
+	ObjInstance* instance = value_as_instance(argv[0]);
+	const ObjString* field = value_as_string(argv[1]);
+	table_delete(&instance->fields, field);
+	return true;
 }
 
 void vm_init(VM* vm)
@@ -79,6 +138,11 @@ void vm_init(VM* vm)
 	table_init(&vm->data.globals);
 
 	define_native(vm, "clock", native_clock);
+	define_native(vm, "error", native_error);
+	define_native(vm, "hasField", native_hasField);
+	define_native(vm, "getField", native_getField);
+	define_native(vm, "setField", native_setField);
+	define_native(vm, "deleteField", native_deleteField);
 }
 
 void vm_destroy(VM* vm)
@@ -181,9 +245,23 @@ static bool call_value(VM* vm, Value callee, int argc)
 		case OBJ_CLOSURE: return call(vm, value_as_closure(callee), argc);
 		case OBJ_NATIVE: {
 			NativeFn native = value_as_native(callee);
-			Value result = native(argc, vm->stack_pointer - argc);
-			vm->stack_pointer -= argc + 1;
-			push(vm, result);
+			vm->stack_pointer[- argc - 1] = nil_value();
+			if (native(argc, vm->stack_pointer - argc)) {
+				vm->stack_pointer -= argc;
+				return true;
+			} else {
+				const Value err = vm->stack_pointer[- argc - 1];
+				if (value_is_string(err))
+					runtime_error(vm, "Error: %s", value_as_c_str(err));
+				else
+					runtime_error(vm, "Error!");
+				return false;
+			}
+		}
+		case OBJ_CLASS: { // calling a class evokes its constructor
+			ObjClass* class = value_as_class(callee);
+			ObjInstance* instance = make_obj_instance(&vm->data.objects, class);
+			vm->stack_pointer[-(argc + 1)] = obj_value((Obj*)instance);
 			return true;
 		}
 		default: goto FAIL;
@@ -273,15 +351,25 @@ static InterpretResult run(VM* vm)
 
 		// @TODO: benchmark manual jump table optimized with computed gotos
 		switch (instruction) {
-			case OP_CONSTANT: push(vm, READ_CONSTANT()); break;
+			case OP_CONSTANT:
+				push(vm, READ_CONSTANT());
+				break;
 
-			case OP_NIL: push(vm, nil_value()); break;
+			case OP_NIL:
+				push(vm, nil_value());
+				break;
 
-			case OP_TRUE: push(vm, bool_value(true)); break;
+			case OP_TRUE:
+				push(vm, bool_value(true));
+				break;
 
-			case OP_FALSE: push(vm, bool_value(false)); break;
+			case OP_FALSE:
+				push(vm, bool_value(false));
+				break;
 
-			case OP_POP: pop(vm); break;
+			case OP_POP:
+				pop(vm);
+				break;
 
 			case OP_GET_LOCAL: {
 				const uint8_t slot = READ_BYTE();
@@ -297,9 +385,8 @@ static InterpretResult run(VM* vm)
 			}
 
 			case OP_GET_GLOBAL: {
-				/* @XXX: optimize access to global variables via statically
-				computed array indexes instead of hash table name lookups: see
-				http://craftinginterpreters.com/global-variables.html ex. 2. */
+				/* @NOTE: we could optimize access to globals via statically
+				computed array indexes instead of hash table name lookups */
 				const ObjString* name = value_as_string(READ_CONSTANT());
 				Value value;
 				if (!table_get(&vm->data.globals, name, &value)) {
@@ -339,6 +426,42 @@ static InterpretResult run(VM* vm)
 				break;
 			}
 
+			case OP_GET_PROPERTY: {
+				if (!value_is_instance(peek(vm, 0))) {
+					runtime_error(vm, "Only instances have properties.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+
+				const ObjInstance* instance = value_as_instance(peek(vm, 0));
+				ObjString* name = value_as_string(READ_CONSTANT());
+
+				Value value;
+				if (table_get(&instance->fields, name, &value)) {
+					pop(vm);
+					push(vm, value);
+				} else {
+					runtime_error(vm, "Undefined property '%s'.", name->chars);
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				break;
+			}
+
+			case OP_SET_PROPERTY: {
+				if (!value_is_instance(peek(vm, 1))) {
+					runtime_error(vm, "Only instances have fields.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+
+				ObjInstance* instance = value_as_instance(peek(vm, 1));
+				ObjString* name = value_as_string(READ_CONSTANT());
+				table_put(&instance->fields, name, peek(vm, 0));
+
+				Value value = pop(vm);
+				pop(vm);
+				push(vm, value);
+				break;
+			}
+
 			case OP_EQUAL: {
 				const Value b = pop(vm);
 				const Value a = pop(vm);
@@ -346,9 +469,13 @@ static InterpretResult run(VM* vm)
 				break;
 			}
 
-			case OP_GREATER: BINARY_OP(bool_value, >); break;
+			case OP_GREATER:
+				BINARY_OP(bool_value, >);
+				break;
 
-			case OP_LESS: BINARY_OP(bool_value, <); break;
+			case OP_LESS:
+				BINARY_OP(bool_value, <);
+				break;
 
 			case OP_ADD:
 				if (value_is_string(peek(vm, 0)) && value_is_string(peek(vm, 1)))
@@ -357,11 +484,17 @@ static InterpretResult run(VM* vm)
 					BINARY_OP(number_value, +);
 				break;
 
-			case OP_SUBTRACT: BINARY_OP(number_value, -); break;
+			case OP_SUBTRACT:
+				BINARY_OP(number_value, -);
+				break;
 
-			case OP_MULTIPLY: BINARY_OP(number_value, *); break;
+			case OP_MULTIPLY:
+				BINARY_OP(number_value, *);
+				break;
 
-			case OP_DIVIDE: BINARY_OP(number_value, /); break;
+			case OP_DIVIDE:
+				BINARY_OP(number_value, /);
+				break;
 
 			case OP_NOT:
 				push(vm, bool_value(value_is_falsey(pop(vm))));
@@ -446,7 +579,15 @@ static InterpretResult run(VM* vm)
 				break;
 			}
 
-			default: assert(false);
+			case OP_CLASS: {
+				ObjString* name = value_as_string(READ_CONSTANT());
+				ObjClass* class = make_obj_class(&vm->data.objects, name);
+				push(vm, obj_value((Obj*)class));
+				break;
+			}
+
+			default:
+				assert(false);
 		}
 	}
 

@@ -12,15 +12,15 @@
 #define DEBUG_PRINT_CODE 1
 
 // Prints opcodes and the stack during VM execution.
-#define DEBUG_TRACE_EXECUTION 0
+#define DEBUG_TRACE_EXECUTION 1
 
 // Prints dynamic memory management during the Lox runtime.
 #define DEBUG_LOG_GC 1
 
 // Makes the GC run on every allocation.
-#define DEBUG_STRESS_GC 1
+#define DEBUG_STRESS_GC 0
 
-// Initial heap memory.
+// Initial heap size, in bytes.
 #define GC_HEAP_INITIAL (1024 * 1024)
 
 #endif // CLOX_COMMON_H

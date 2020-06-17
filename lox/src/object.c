@@ -13,24 +13,20 @@
 extern inline ObjType obj_type(Value value);
 
 extern inline bool value_obj_is_type(Value value, ObjType type);
-
 extern inline bool value_is_string(Value value);
-
 extern inline bool value_is_function(Value value);
-
 extern inline bool value_is_closure(Value value);
-
 extern inline bool value_is_native(Value value);
+extern inline bool value_is_class(Value value);
+extern inline bool value_is_instance(Value value);
 
 extern inline ObjString* value_as_string(Value value);
-
 extern inline char* value_as_c_str(Value value);
-
 extern inline ObjFunction* value_as_function(Value value);
-
 extern inline ObjClosure* value_as_closure(Value value);
-
 extern inline NativeFn value_as_native(Value value);
+extern inline ObjClass* value_as_class(Value value);
+extern inline ObjInstance* value_as_instance(Value value);
 
 static void print_function(ObjFunction* function)
 {
@@ -43,12 +39,29 @@ static void print_function(ObjFunction* function)
 void obj_print(Value value)
 {
 	switch (obj_type(value)) {
-		case OBJ_STRING: printf("\"%s\"", value_as_c_str(value)); break;
-		case OBJ_FUNCTION: print_function(value_as_function(value)); break;
-		case OBJ_CLOSURE: print_function(value_as_closure(value)->function); break;
-		case OBJ_UPVALUE: printf("upvalue"); break;
-		case OBJ_NATIVE: printf("<native fn>"); break;
-		default: assert(false);
+		case OBJ_STRING:
+			printf("\"%s\"", value_as_c_str(value));
+			break;
+		case OBJ_FUNCTION:
+			print_function(value_as_function(value));
+			break;
+		case OBJ_CLOSURE:
+			print_function(value_as_closure(value)->function);
+			break;
+		case OBJ_UPVALUE:
+			printf("upvalue");
+			break;
+		case OBJ_NATIVE:
+			printf("<native fn>");
+			break;
+		case OBJ_CLASS:
+			printf("%s", value_as_class(value)->name->chars);
+			break;
+		case OBJ_INSTANCE:
+			printf("%s instance", value_as_instance(value)->class->name->chars);
+			break;
+		default:
+			assert(false);
 	}
 }
 
@@ -75,6 +88,13 @@ void free_obj(Obj* object)
 		}
 		case OBJ_UPVALUE: FREE_OBJ(object, ObjUpvalue); break;
 		case OBJ_NATIVE: FREE_OBJ(object, ObjNative); break;
+		case OBJ_CLASS: FREE_OBJ(object, ObjClass); break;
+		case OBJ_INSTANCE: {
+			ObjInstance* instance = (ObjInstance*)object;
+			table_destroy(&instance->fields);
+			FREE_OBJ(object, ObjInstance);
+			break;
+		}
 		default: assert(false);
 	}
 
@@ -155,7 +175,7 @@ ObjFunction* make_obj_function(Obj** objects)
 	proc->arity = 0;
 	proc->upvalues = 0;
 	proc->name = NULL;
-	chunk_init(&proc->bytecode); // initialized with 0, so proc is GC safe
+	chunk_init(&proc->bytecode); // initialized with 0 size, so proc is GC safe
 	return proc;
 }
 
@@ -188,6 +208,21 @@ ObjUpvalue* make_obj_upvalue(Obj** objects, Value* slot)
 	upvalue->closed = nil_value();
 	upvalue->next = NULL;
 	return upvalue;
+}
+
+ObjClass* make_obj_class(Obj** objects, ObjString* name)
+{
+	ObjClass* class = ALLOCATE_OBJ(objects, ObjClass, OBJ_CLASS);
+	class->name = name;
+	return class;
+}
+
+ObjInstance* make_obj_instance(Obj** objects, ObjClass* class)
+{
+	ObjInstance* instance = ALLOCATE_OBJ(objects, ObjInstance, OBJ_INSTANCE);
+	instance->class = class;
+	table_init(&instance->fields); // initialized with 0 size, so it is GC safe
+	return instance;
 }
 
 #undef ALLOCATE_OBJ

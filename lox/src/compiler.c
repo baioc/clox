@@ -60,6 +60,7 @@ static void variable(Parser* parser, bool can_assign);
 static void and(Parser* parser, bool can_assign);
 static void or(Parser* parser, bool can_assign);
 static void call(Parser* parser, bool can_assign);
+static void dot(Parser* parser, bool can_assign);
 
 static void declaration(Parser* parser);
 static void statement(Parser* parser);
@@ -71,7 +72,7 @@ static ParseRule rules[] = {
 	[TOKEN_LEFT_BRACE]    = { NULL,     NULL,   PREC_NONE       },
 	[TOKEN_RIGHT_BRACE]   = { NULL,     NULL,   PREC_NONE       },
 	[TOKEN_COMMA]         = { NULL,     NULL,   PREC_NONE       },
-	[TOKEN_DOT]           = { NULL,     NULL,   PREC_NONE       },
+	[TOKEN_DOT]           = { NULL,     dot,    PREC_CALL       },
 	[TOKEN_MINUS]         = { unary,    binary, PREC_TERM       },
 	[TOKEN_PLUS]          = { NULL,     binary, PREC_TERM       },
 	[TOKEN_SEMICOLON]     = { NULL,     NULL,   PREC_NONE       },
@@ -236,9 +237,8 @@ static uint8_t make_string_constant(Parser* parser, const char* chars, size_t le
 	// check if this string was previously registered and if so, return its id
 	Value index = nil_value();
 	table_get(&parser->data->strings, str, &index);
-	if (!value_is_nil(index)) {
+	if (!value_is_nil(index))
 		return (uint8_t)value_as_number(index);
-	}
 
 	// associate string with its created constant pool id
 	const uint8_t id = make_constant(parser, obj_value((Obj*)str));
@@ -631,6 +631,20 @@ static void function_declaration(Parser* parser)
 	define_variable(parser, var);
 }
 
+static void class_declaration(Parser* parser)
+{
+	consume(parser, TOKEN_IDENTIFIER, "Expect class name.");
+	const uint8_t id = make_string_constant(parser, parser->previous.start,
+	                                                parser->previous.length);
+	declare_variable(parser);
+
+	emit_bytes(parser, OP_CLASS, id);
+	define_variable(parser, id);
+
+	consume(parser, TOKEN_LEFT_BRACE, "Expect '{' before class body.");
+	consume(parser, TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
+}
+
 static void and(Parser* parser, bool can_assign)
 {
 	// if the left operand is false, leave it on the stack
@@ -684,6 +698,8 @@ static void declaration(Parser* parser)
 		variable_declaration(parser);
 	else if (match(parser, TOKEN_FUN))
 		function_declaration(parser);
+	else if (match(parser, TOKEN_CLASS))
+		class_declaration(parser);
 	else
 		statement(parser);
 
@@ -758,6 +774,20 @@ static void call(Parser* parser, bool can_assign)
 {
 	const uint8_t argc = argument_list(parser);
 	emit_bytes(parser, OP_CALL, argc);
+}
+
+static void dot(Parser* parser, bool can_assign)
+{
+	consume(parser, TOKEN_IDENTIFIER, "Expect property name after '.'.");
+	const uint8_t id = make_string_constant(parser, parser->previous.start,
+	                                                parser->previous.length);
+
+	if (can_assign && match(parser, TOKEN_EQUAL)) {
+		expression(parser);
+		emit_bytes(parser, OP_SET_PROPERTY, id);
+	} else {
+		emit_bytes(parser, OP_GET_PROPERTY, id);
+	}
 }
 
 static void literal(Parser* parser, bool can_assign)

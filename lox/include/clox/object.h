@@ -11,11 +11,13 @@
 
 // Possible Obj types.
 typedef enum {
-	OBJ_STRING,
-	OBJ_FUNCTION,
+	OBJ_CLASS,
 	OBJ_CLOSURE,
-	OBJ_UPVALUE,
+	OBJ_FUNCTION,
+	OBJ_INSTANCE,
 	OBJ_NATIVE,
+	OBJ_STRING,
+	OBJ_UPVALUE,
 } ObjType;
 
 struct Obj {
@@ -24,36 +26,59 @@ struct Obj {
 	bool marked;
 };
 
-struct ObjString { /* <: */ struct Obj obj;
+struct ObjString {
+	struct Obj obj;
+	//
 	hash_t hash;
 	size_t length;
 	char* chars;
 };
 
-typedef struct ObjUpvalue { /* <: */ struct Obj obj;
-	Value* location;
-	Value closed;
-	struct ObjUpvalue* next;
-} ObjUpvalue;
-
-typedef struct { /* <: */ struct Obj obj;
+typedef struct {
+	struct Obj obj;
+	//
 	ObjString* name;
 	int arity;
 	int upvalues;
 	Chunk bytecode;
 } ObjFunction;
 
-typedef struct { /* <: */ struct Obj obj;
+typedef bool (*NativeFn)(int arc, Value argv[]);
+
+typedef struct {
+	struct Obj obj;
+	//
+	NativeFn function;
+} ObjNative;
+
+typedef struct ObjUpvalue {
+	struct Obj obj;
+	//
+	Value* location;
+	Value closed;
+	struct ObjUpvalue* next;
+} ObjUpvalue;
+
+typedef struct {
+	struct Obj obj;
+	//
 	ObjFunction* function;
 	int upvalue_count;
 	ObjUpvalue** upvalues;
 } ObjClosure;
 
-typedef Value (*NativeFn)(int arc, Value argv[]);
+typedef struct {
+	struct Obj obj;
+	//
+	ObjString* name;
+} ObjClass;
 
-typedef struct { /* <: */ struct Obj obj;
-	NativeFn function;
-} ObjNative;
+typedef struct {
+	struct Obj obj;
+	//
+	ObjClass* class;
+	Table fields;
+} ObjInstance;
 
 
 inline ObjType obj_type(Value value)
@@ -86,6 +111,16 @@ inline bool value_is_native(Value value)
 	return value_obj_is_type(value, OBJ_NATIVE);
 }
 
+inline bool value_is_class(Value value)
+{
+	return value_obj_is_type(value, OBJ_CLASS);
+}
+
+inline bool value_is_instance(Value value)
+{
+	return value_obj_is_type(value, OBJ_INSTANCE);
+}
+
 inline ObjString* value_as_string(Value value)
 {
 	return (ObjString*)value_as_obj(value);
@@ -109,6 +144,16 @@ inline NativeFn value_as_native(Value value)
 inline ObjClosure* value_as_closure(Value value)
 {
 	return (ObjClosure*)value_as_obj(value);
+}
+
+inline ObjClass* value_as_class(Value value)
+{
+	return (ObjClass*)value_as_obj(value);
+}
+
+inline ObjInstance* value_as_instance(Value value)
+{
+	return (ObjInstance*)value_as_obj(value);
 }
 
 void obj_print(Value value);
@@ -138,5 +183,11 @@ ObjClosure* make_obj_closure(Obj** objects, ObjFunction* function);
 
 // Allocates a new ObjUpvalue with SLOT in the OBJECTS linked list.
 ObjUpvalue* make_obj_upvalue(Obj** objects, Value* slot);
+
+// Allocates a new ObjClass called NAME in the OBJECTS linked list.
+ObjClass* make_obj_class(Obj** objects, ObjString* name);
+
+// Allocates a new ObjInstance of CLASS in the OBJECTS linked list.
+ObjInstance* make_obj_instance(Obj** objects, ObjClass* class);
 
 #endif // CLOX_OBJECT_H

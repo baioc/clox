@@ -34,7 +34,7 @@ inline hash_t table_hash(const void* ptr, size_t n)
 // Adds the (KEY -> VALUE) pair to TABLE. Returns true if key already existed.
 bool table_put(Table* table, const ObjString* key, Value value);
 
-// Deletes the entry associated with KEY from the TABLE. Returns on success.
+// Deletes the entry associated with KEY from the TABLE. Returns true on success.
 bool table_delete(Table* table, const ObjString* key);
 
 /** Iterates (in unspecified order) through all entries in TABLE, calling FUNC

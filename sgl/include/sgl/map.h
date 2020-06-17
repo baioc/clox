@@ -28,7 +28,6 @@ typedef struct {
  * Returns 0 on success or ENOMEM when ALLOC fails. */
 err_t map_init(map_t* map, index_t n, size_t key_size, size_t value_size,
                compare_fn_t key_cmp, hash_fn_t key_hash, allocator_fn_t alloc);
-
 // @XXX: when no key_hash is provided, we could use a tree to implement this...
 
 // Frees any resources allocated by map_init().
