@@ -288,6 +288,35 @@ FAIL:
 	return false;
 }
 
+static bool invoke_from_class(VM* vm, ObjClass* class, ObjString* name, int argc)
+{
+	Value method;
+	if (!table_get(&class->methods, name, &method)) {
+		runtime_error(vm, "Undefined property '%s'.", name->chars);
+		return false;
+	}
+	return call(vm, value_as_closure(method), argc);
+}
+
+static bool invoke(VM* vm, ObjString* name, int argc)
+{
+	const Value receiver = peek(vm, argc);
+	if (!value_is_instance(receiver)) {
+		runtime_error(vm, "Only instances have methods.");
+		return false;
+	}
+	ObjInstance* instance = value_as_instance(receiver);
+
+	// check if we're invoking a field instead of a method
+	Value value;
+	if (table_get(&instance->fields, name, &value)) {
+		vm->stack_pointer[-(argc + 1)] = value;
+		return call_value(vm, value, argc);
+	}
+
+	return invoke_from_class(vm, instance->class, name, argc);
+}
+
 static ObjUpvalue* capture_upvalue(VM* vm, Value* local)
 {
 	// before creating an upvalue variable, look up an existing one for sharing
@@ -366,11 +395,12 @@ static InterpretResult run(VM* vm)
 
 	#define READ_BYTE() \
 		chunk_get_byte(&frame->subroutine->function->bytecode, frame->program_counter++)
-	#define READ_CONSTANT() constant_get(&vm->data.constants, READ_BYTE())
 	#define READ_SHORT() \
 		(frame->program_counter += 2, \
 		 (chunk_get_byte(&frame->subroutine->function->bytecode, frame->program_counter - 2) << 8) \
 		| chunk_get_byte(&frame->subroutine->function->bytecode, frame->program_counter - 1))
+	#define READ_CONSTANT() constant_get(&vm->data.constants, READ_BYTE())
+	#define READ_STRING() value_as_string(READ_CONSTANT())
 	#define BINARY_OP(type_value, op) do { \
 		if (!value_is_number(peek(vm, 0)) || !value_is_number(peek(vm, 1))) { \
 			runtime_error(vm, "Operands must be numbers."); \
@@ -424,7 +454,7 @@ static InterpretResult run(VM* vm)
 			case OP_GET_GLOBAL: {
 				/* @NOTE: we could optimize access to globals via statically
 				computed array indexes instead of hash table name lookups */
-				const ObjString* name = value_as_string(READ_CONSTANT());
+				const ObjString* name = READ_STRING();
 				Value value;
 				if (!table_get(&vm->data.globals, name, &value)) {
 					runtime_error(vm, "Undefined variable '%s'.", name->chars);
@@ -434,15 +464,13 @@ static InterpretResult run(VM* vm)
 				break;
 			}
 
-			case OP_DEFINE_GLOBAL: {
-				const ObjString* name = value_as_string(READ_CONSTANT());
-				table_put(&vm->data.globals, name, peek(vm, 0));
+			case OP_DEFINE_GLOBAL:
+				table_put(&vm->data.globals, READ_STRING(), peek(vm, 0));
 				pop(vm);
 				break;
-			}
 
 			case OP_SET_GLOBAL: {
-				ObjString* name = value_as_string(READ_CONSTANT());
+				ObjString* name = READ_STRING();
 				if (!table_put(&vm->data.globals, name, peek(vm, 0))) {
 					table_delete(&vm->data.globals, name);
 					runtime_error(vm, "Undefined variable '%s'.", name->chars);
@@ -470,7 +498,7 @@ static InterpretResult run(VM* vm)
 				}
 
 				const ObjInstance* instance = value_as_instance(peek(vm, 0));
-				ObjString* name = value_as_string(READ_CONSTANT());
+				ObjString* name = READ_STRING();
 
 				Value value;
 				if (table_get(&instance->fields, name, &value)) {
@@ -490,7 +518,7 @@ static InterpretResult run(VM* vm)
 				}
 
 				ObjInstance* instance = value_as_instance(peek(vm, 1));
-				ObjString* name = value_as_string(READ_CONSTANT());
+				ObjString* name = READ_STRING();
 				table_put(&instance->fields, name, peek(vm, 0));
 
 				Value value = pop(vm);
@@ -579,6 +607,14 @@ static InterpretResult run(VM* vm)
 				break;
 			}
 
+			case OP_INVOKE: {
+				ObjString* method = READ_STRING();
+				const int argc = READ_BYTE();
+				if (!invoke(vm, method, argc)) return INTERPRET_RUNTIME_ERROR;
+				frame = &vm->frames[vm->frame_count - 1];
+				break;
+			}
+
 			case OP_CLOSURE: {
 				ObjFunction* function = value_as_function(READ_CONSTANT());
 				ObjClosure* closure = make_obj_closure(&vm->data.objects, function);
@@ -616,14 +652,14 @@ static InterpretResult run(VM* vm)
 			}
 
 			case OP_CLASS: {
-				ObjString* name = value_as_string(READ_CONSTANT());
+				ObjString* name = READ_STRING();
 				ObjClass* class = make_obj_class(&vm->data.objects, name);
 				push(vm, obj_value((Obj*)class));
 				break;
 			}
 
 			case OP_METHOD:
-				define_method(vm, value_as_string(READ_CONSTANT()));
+				define_method(vm, READ_STRING());
 				break;
 
 			default:
@@ -633,8 +669,9 @@ static InterpretResult run(VM* vm)
 	}
 
 	#undef BINARY_OP
-	#undef READ_SHORT
+	#undef READ_STRING
 	#undef READ_CONSTANT
+	#undef READ_SHORT
 	#undef READ_BYTE
 }
 

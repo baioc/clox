@@ -31,11 +31,22 @@ static int byte_instruction(const char* name, const Chunk* chunk, intptr_t addr)
 	return 2;
 }
 
-static int jump_instruction(const char* op, const Chunk* chk, int addr, int sgn)
+static int jump_instruction(const char* op, const Chunk* chk, intptr_t addr, int sgn)
 {
 	uint16_t jump = chunk_get_byte(chk, addr + 1) << 8;
 	jump |= chunk_get_byte(chk, addr + 2);
 	printf("%-16s %4d -> %d\n", op, addr, addr + 3 + sgn * jump);
+	return 3;
+}
+
+static int invoke_instruction(const char* op, const Chunk* chk, intptr_t addr,
+                              const ValueArray* constants)
+{
+	const uint8_t id = chunk_get_byte(chk, addr + 1);
+	const uint8_t argc = chunk_get_byte(chk, addr + 2);
+	printf("%-16s (%d args) %4d '", op, argc, id);
+	value_print(constant_get(constants, id));
+	printf("'\n");
 	return 3;
 }
 
@@ -115,6 +126,7 @@ int disassemble_instruction(const Chunk* chunk, const ValueArray* constants, int
 		CASE_SIMPLE(OP_RETURN);
 		CASE_CONSTANT(OP_CLASS);
 		CASE_CONSTANT(OP_METHOD);
+		case OP_INVOKE: return invoke_instruction("OP_INVOKE", chunk, offset, constants);
 		default: printf("Unknown opcode %d\n", instruction); return 1;
 	}
 

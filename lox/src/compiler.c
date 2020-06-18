@@ -899,6 +899,10 @@ static void dot(Parser* parser, bool can_assign)
 	if (can_assign && match(parser, TOKEN_EQUAL)) {
 		expression(parser);
 		emit_bytes(parser, OP_SET_PROPERTY, id);
+	} else if (match(parser, TOKEN_LEFT_PAREN)) {
+		const uint8_t argc = argument_list(parser);
+		emit_bytes(parser, OP_INVOKE, id);
+		emit_byte(parser, argc);
 	} else {
 		emit_bytes(parser, OP_GET_PROPERTY, id);
 	}
