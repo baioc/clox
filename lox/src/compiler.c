@@ -21,6 +21,7 @@
 typedef struct ClassCompiler {
 	struct ClassCompiler* enclosing;
 	Token name;
+	bool has_super;
 } ClassCompiler;
 
 typedef struct {
@@ -68,6 +69,7 @@ static void or(Parser* parser, bool can_assign);
 static void call(Parser* parser, bool can_assign);
 static void dot(Parser* parser, bool can_assign);
 static void this(Parser* parser, bool can_assign);
+static void super(Parser* parser, bool can_assign);
 
 static void declaration(Parser* parser);
 static void statement(Parser* parser);
@@ -107,7 +109,7 @@ static ParseRule rules[] = {
 	[TOKEN_OR]            = { NULL,     or,     PREC_OR         },
 	[TOKEN_PRINT]         = { NULL,     NULL,   PREC_NONE       },
 	[TOKEN_RETURN]        = { NULL,     NULL,   PREC_NONE       },
-	[TOKEN_SUPER]         = { NULL,     NULL,   PREC_NONE       },
+	[TOKEN_SUPER]         = { super,    NULL,   PREC_NONE       },
 	[TOKEN_THIS]          = { this,     NULL,   PREC_NONE       },
 	[TOKEN_TRUE]          = { literal,  NULL,   PREC_NONE       },
 	[TOKEN_VAR]           = { NULL,     NULL,   PREC_NONE       },
@@ -727,6 +729,48 @@ static void this(Parser* parser, bool can_assign)
 		variable(parser, false);
 }
 
+static uint8_t argument_list(Parser* parser)
+{
+	uint8_t argc = 0;
+	if (!check(parser, TOKEN_RIGHT_PAREN)) {
+		do {
+			expression(parser);
+			++argc;
+			if (argc >= 255) error(parser, "Cannot have more than 255 arguments.");
+		} while (match(parser, TOKEN_COMMA));
+	}
+	consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after arguments.");
+	return argc;
+}
+
+static void super(Parser* p, bool can_assign)
+{
+	if (p->class == NULL)
+		error(p, "Cannot use 'super' outside of a class.");
+	else if (!p->class->has_super)
+		error(p,"Cannot use 'super' in a class with no superclass.");
+
+	// super always goes with '.' + methodName
+	consume(p, TOKEN_DOT, "Expect '.' after 'super'.");
+	consume(p, TOKEN_IDENTIFIER, "Expect superclass method name.");
+	uint8_t id = make_string_constant(p, p->previous.start, p->previous.length);
+
+	// get instance
+	Token this = { .start = "this", .length = 4 };
+	named_variable(p, &this, false);
+
+	Token super = { .start = "super", .length = 5 };
+	if (match(p, TOKEN_LEFT_PAREN)) {
+		const uint8_t argc = argument_list(p);
+		named_variable(p, &super, false);
+		emit_bytes(p, OP_SUPER_INVOKE, id);
+		emit_byte(p, argc);
+	} else {
+		named_variable(p, &super, false);
+		emit_bytes(p, OP_GET_SUPER, id);
+	}
+}
+
 static void function_declaration(Parser* parser)
 {
 	const uint8_t var = parse_variable(parser, "Expect function name.");
@@ -745,16 +789,38 @@ static void class_declaration(Parser* p)
 	emit_bytes(p, OP_CLASS, id);
 	define_variable(p, id);
 
-	ClassCompiler class;
-	class.name = name;
-	class.enclosing = p->class;
+	ClassCompiler class = {
+		.name = name,
+		.enclosing = p->class,
+		.has_super = false,
+	};
 	p->class = &class;
+
+	// inheritance
+	if (match(p, TOKEN_LESS)) {
+		consume(p, TOKEN_IDENTIFIER, "Expect superclass name.");
+		variable(p, false);
+		if (token_equal(&name, &p->previous)) {
+			error(p, "A class cannot inherit from itself.");
+		}
+
+		scope_begin(p);
+		add_local(p, (Token){ .start = "super", .length = 5 });
+		define_variable(p, 0);
+
+		named_variable(p, &name, false);
+		emit_byte(p, OP_INHERIT);
+		class.has_super = true;
+	}
 
 	named_variable(p, &name, false); // class on top of the stack for methods
 	consume(p, TOKEN_LEFT_BRACE, "Expect '{' before class body.");
 	while (!check(p, TOKEN_RIGHT_BRACE) && !check(p, TOKEN_EOF)) method(p);
 	consume(p, TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
 	emit_byte(p, OP_POP); // then we pop it
+
+	if (class.has_super)
+		scope_end(p);
 
 	p->class = class.enclosing;
 }
@@ -868,20 +934,6 @@ static void binary(Parser* parser, bool can_assign)
 		case TOKEN_STAR: emit_byte(parser, OP_MULTIPLY); break;
 		case TOKEN_SLASH: emit_byte(parser, OP_DIVIDE); break;
 	}
-}
-
-static uint8_t argument_list(Parser* parser)
-{
-	uint8_t argc = 0;
-	if (!check(parser, TOKEN_RIGHT_PAREN)) {
-		do {
-			expression(parser);
-			++argc;
-			if (argc >= 255) error(parser, "Cannot have more than 255 arguments.");
-		} while (match(parser, TOKEN_COMMA));
-	}
-	consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after arguments.");
-	return argc;
 }
 
 static void call(Parser* parser, bool can_assign)

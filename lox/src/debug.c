@@ -60,6 +60,9 @@ int disassemble_instruction(const Chunk* chunk, const ValueArray* constants, int
 		case opcode: return byte_instruction(#opcode, chunk, offset)
 	#define CASE_JUMP(opcode, sign) \
 		case opcode: return jump_instruction(#opcode, chunk, offset, (sign))
+	#define CASE_INVOKE(opcode) \
+		case opcode: return invoke_instruction(#opcode, chunk, offset, constants)
+
 
 	// print byte address and line number
 	printf("%04d ", offset);
@@ -86,6 +89,7 @@ int disassemble_instruction(const Chunk* chunk, const ValueArray* constants, int
 		CASE_BYTE(OP_SET_UPVALUE);
 		CASE_CONSTANT(OP_GET_PROPERTY);
 		CASE_CONSTANT(OP_SET_PROPERTY);
+		CASE_CONSTANT(OP_GET_SUPER);
 		CASE_SIMPLE(OP_EQUAL);
 		CASE_SIMPLE(OP_GREATER);
 		CASE_SIMPLE(OP_LESS);
@@ -126,10 +130,13 @@ int disassemble_instruction(const Chunk* chunk, const ValueArray* constants, int
 		CASE_SIMPLE(OP_RETURN);
 		CASE_CONSTANT(OP_CLASS);
 		CASE_CONSTANT(OP_METHOD);
-		case OP_INVOKE: return invoke_instruction("OP_INVOKE", chunk, offset, constants);
+		CASE_INVOKE(OP_INVOKE);
+		CASE_INVOKE(OP_SUPER_INVOKE);
+		CASE_SIMPLE(OP_INHERIT);
 		default: printf("Unknown opcode %d\n", instruction); return 1;
 	}
 
+	#undef CASE_INVOKE
 	#undef CASE_JUMP
 	#undef CASE_BYTE
 	#undef CASE_CONSTANT

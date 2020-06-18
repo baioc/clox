@@ -242,7 +242,8 @@ static bool call(VM* vm, ObjClosure* closure, int argc)
 
 static bool call_value(VM* vm, Value callee, int argc)
 {
-	if (!value_is_obj(callee)) goto FAIL;
+	if (!value_is_obj(callee))
+		goto FAIL;
 
 	switch (obj_type(callee)) {
 		case OBJ_CLOSURE:
@@ -259,8 +260,8 @@ static bool call_value(VM* vm, Value callee, int argc)
 					runtime_error(vm, "Error: %s", value_as_c_str(err));
 				else
 					runtime_error(vm, "Error!");
-				return false;
 			}
+			return false;
 		}
 		case OBJ_CLASS: { // calling a class evokes its constructor
 			ObjClass* class = value_as_class(callee);
@@ -272,6 +273,9 @@ static bool call_value(VM* vm, Value callee, int argc)
 			} else if (argc != 0) {
 				runtime_error(vm, "Expected 0 arguments but got %d.", argc);
 				return false;
+			} else {
+				/* default initializer */
+				return true;
 			}
 		}
 		case OBJ_BOUND_METHOD: {
@@ -387,6 +391,12 @@ static void debug_trace_run(const VM* vm, const CallFrame* frame)
 	                        &vm->data.constants,
 	                        frame->program_counter);
 #endif
+}
+
+static void inherit_each_method(const ObjString* name, Value* method, void* class_ptr)
+{
+	ObjClass* class = (ObjClass*)class_ptr;
+	table_put(&class->methods, name, *method);
 }
 
 static InterpretResult run(VM* vm)
@@ -527,6 +537,14 @@ static InterpretResult run(VM* vm)
 				break;
 			}
 
+			case OP_GET_SUPER: {
+				ObjString* name = READ_STRING();
+				ObjClass* super = value_as_class(pop(vm));
+				if (!bind_method(vm, super, name))
+					return INTERPRET_RUNTIME_ERROR;
+				break;
+			}
+
 			case OP_EQUAL: {
 				const Value b = pop(vm);
 				const Value a = pop(vm);
@@ -610,7 +628,20 @@ static InterpretResult run(VM* vm)
 			case OP_INVOKE: {
 				ObjString* method = READ_STRING();
 				const int argc = READ_BYTE();
-				if (!invoke(vm, method, argc)) return INTERPRET_RUNTIME_ERROR;
+				if (!invoke(vm, method, argc)) {
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				frame = &vm->frames[vm->frame_count - 1];
+				break;
+			}
+
+			case OP_SUPER_INVOKE: {
+				ObjString* method = READ_STRING();
+				const int argc = READ_BYTE();
+				ObjClass* super = value_as_class(pop(vm));
+				if (!invoke_from_class(vm, super, method, argc)) {
+					return INTERPRET_RUNTIME_ERROR;
+				}
 				frame = &vm->frames[vm->frame_count - 1];
 				break;
 			}
@@ -655,6 +686,20 @@ static InterpretResult run(VM* vm)
 				ObjString* name = READ_STRING();
 				ObjClass* class = make_obj_class(&vm->data.objects, name);
 				push(vm, obj_value((Obj*)class));
+				break;
+			}
+
+			case OP_INHERIT: {
+				const Value super = peek(vm, 1);
+				if (!value_is_class(super)) {
+					runtime_error(vm, "Superclass must be a class.");
+					return INTERPRET_RUNTIME_ERROR;
+				}
+				const ObjClass* superclass = value_as_class(super);
+				ObjClass* class = value_as_class(peek(vm, 0));
+				table_for_each(&superclass->methods, inherit_each_method, class);
+				pop(vm); // subclass
+				// no need to pop super as it is on a separate scope
 				break;
 			}
 
