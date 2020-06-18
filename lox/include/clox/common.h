@@ -3,7 +3,7 @@
 
 #include <stdbool.h> // bool
 #include <stddef.h> // size_t, NULL
-#include <stdint.h> // uint8_t, intptr_t
+#include <stdint.h>
 
 // Prints each token as it is lexed.
 #define DEBUG_PRINT_LEXED 0
@@ -22,5 +22,9 @@
 
 // Initial heap size, in bytes.
 #define GC_HEAP_INITIAL (1024 * 1024)
+
+/* Whether or not to use NaN boxing to save space occupied by Lox Values.
+See http://craftinginterpreters.com/optimization.html#nan-boxing for info. */
+#define NAN_BOXING 1
 
 #endif // CLOX_COMMON_H
