@@ -1,8 +1,6 @@
 cmake_minimum_required(VERSION 3.8)
 project(SGL LANGUAGES C)
 
-set(CMAKE_C_FLAGS "-std=c99")
-
 set(LIBRARY_OUTPUT_PATH ${CMAKE_SOURCE_DIR}/lib)
 set(CMAKE_STATIC_LIBRARY_PREFIX "")
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_SOURCE_DIR}/bin)
@@ -22,6 +20,7 @@ add_library(sgl STATIC
 )
 target_include_directories(sgl PUBLIC include/sgl)
 
+# to ensure assertions cause tests to fail, use -DCMAKE_BUILD_TYPE=Debug
 add_executable(test_core test/core.c)
 target_link_libraries(test_core PUBLIC sgl)
 target_include_directories(test_core PUBLIC include)
