@@ -561,10 +561,14 @@ static InterpretResult run(VM* vm)
 				break;
 
 			case OP_ADD:
-				if (value_is_string(peek(vm, 0)) && value_is_string(peek(vm, 1)))
+				if (value_is_string(peek(vm, 0)) && value_is_string(peek(vm, 1))) {
 					concatenate_strings(vm);
-				else
+				} else if (!value_is_number(peek(vm, 0)) || !value_is_number(peek(vm, 1))) {
+					runtime_error(vm, "Operands must be two numbers or two strings.");
+					return INTERPRET_RUNTIME_ERROR;
+				} else {
 					BINARY_OP(number_value, +);
+				}
 				break;
 
 			case OP_SUBTRACT:

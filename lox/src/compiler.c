@@ -90,7 +90,7 @@ static ParseRule rules[] = {
 	[TOKEN_BANG]          = { unary,    NULL,   PREC_NONE       },
 	[TOKEN_BANG_EQUAL]    = { NULL,     binary, PREC_EQUALITY   },
 	[TOKEN_EQUAL]         = { NULL,     NULL,   PREC_NONE       },
-	[TOKEN_EQUAL_EQUAL]   = { NULL,     binary, PREC_COMPARISON },
+	[TOKEN_EQUAL_EQUAL]   = { NULL,     binary, PREC_EQUALITY   },
 	[TOKEN_GREATER]       = { NULL,     binary, PREC_COMPARISON },
 	[TOKEN_GREATER_EQUAL] = { NULL,     binary, PREC_COMPARISON },
 	[TOKEN_LESS]          = { NULL,     binary, PREC_COMPARISON },
@@ -368,8 +368,8 @@ static void emit_return(Parser* parser)
 	} else {
 		emit_byte(parser, OP_NIL);
 	}
+	// @NOTE: we should avoid emitting unreachable OP_NIL & OP_RETURN
 	emit_byte(parser, OP_RETURN);
-	// @TODO: avoid emitting unreachable OP_NIL & OP_RETURN after actual return
 }
 
 static void return_statement(Parser* parser)
