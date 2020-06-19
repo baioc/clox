@@ -1,5 +1,5 @@
-// This benchmark stresses instance creation and initializer calling.
 // @FIXME: double free
+// This benchmark stresses instance creation and initializer calling.
 
 class Foo {
 	init() {}

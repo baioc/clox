@@ -13,11 +13,11 @@ class Tree {
 	walk() {
 		if (this.depth == 0) return 0;
 		return this.depth
-				+ this.a.walk()
-				+ this.b.walk()
-				+ this.c.walk()
-				+ this.d.walk()
-				+ this.e.walk();
+		     + this.a.walk()
+		     + this.b.walk()
+		     + this.c.walk()
+		     + this.d.walk()
+		     + this.e.walk();
 	}
 }
 

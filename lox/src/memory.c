@@ -83,7 +83,7 @@ static void* sized_realloc(Environment* env, void* ptr, size_t size, const char*
 
 void* reallocate(void* ptr, size_t size, const char* why)
 {
-	Environment* env = get_current_lox_environment();
+	Environment* env = lox_getenv();
 	if (env == NULL) {
 	#if DEBUG_LOG_GC
 		fprintf(stderr, "GC allocator used for '%s' with no environment!\n", why);
@@ -256,7 +256,7 @@ static void remove_each_white(const ObjString* key, Value* value, void* table_pt
 
 void collect_garbage()
 {
-	Environment* env = get_current_lox_environment();
+	Environment* env = lox_getenv();
 	if (env == NULL) return;
 
 #if DEBUG_LOG_GC

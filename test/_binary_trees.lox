@@ -1,3 +1,5 @@
+// @FIXME: double free
+
 class Tree {
 	init(item, depth) {
 		this.item = item;
@@ -66,7 +68,6 @@ while (depth < stretchDepth) {
 print "long lived tree of depth:";
 print maxDepth;
 print "check:";
-// @FIXME: double free
 print longLivedTree.check();
 print "elapsed:";
 print clock() - start;

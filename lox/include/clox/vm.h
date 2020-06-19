@@ -62,10 +62,10 @@ typedef enum {
 
 
 // Gets the current lox execution environment, or NULL if uninitialized.
-Environment* get_current_lox_environment(void);
+Environment* lox_getenv(void);
 
 // Defines the current lox execution environment as ENV, returning the old one.
-Environment* set_current_lox_environment(Environment* env);
+Environment* lox_setenv(Environment* env);
 
 /** Adds a constant VALUE to the CONSTANT pool.
  * Returns the pool index where it was added for later access.

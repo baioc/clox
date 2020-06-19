@@ -9,10 +9,10 @@
 #define DEBUG_PRINT_LEXED 0
 
 // Prints bytecode chunks when their compilation finishes.
-#define DEBUG_PRINT_CODE 1
+#define DEBUG_PRINT_CODE 0
 
 // Prints opcodes and the stack during VM execution.
-#define DEBUG_TRACE_EXECUTION 1
+#define DEBUG_TRACE_EXECUTION 0
 
 // Prints dynamic memory management during the Lox runtime.
 #define DEBUG_LOG_GC 0

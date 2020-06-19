@@ -22,12 +22,12 @@
 
 static Environment* env = NULL;
 
-Environment* get_current_lox_environment(void)
+Environment* lox_getenv(void)
 {
 	return env;
 }
 
-Environment* set_current_lox_environment(Environment* new)
+Environment* lox_setenv(Environment* new)
 {
 	Environment* old = env;
 	env = new;
@@ -122,6 +122,7 @@ static bool native_deleteField(int argc, Value argv[])
 
 void vm_init(VM* vm)
 {
+	lox_setenv(&vm->data);
 	vm->data.vm = vm;
 	vm->data.compiler = NULL;
 

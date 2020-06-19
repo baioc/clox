@@ -8,7 +8,6 @@
 static int repl(void)
 {
 	VM vm;
-	Environment* env = set_current_lox_environment(&vm.data);
 	vm_init(&vm);
 
 	for (char line[1024];;) {
@@ -21,7 +20,6 @@ static int repl(void)
 	}
 
 	vm_destroy(&vm);
-	set_current_lox_environment(env);
 	return 0;
 }
 
@@ -59,7 +57,6 @@ static char* read_file(const char* path)
 static int run_file(const char* filename)
 {
 	VM vm;
-	Environment* env = set_current_lox_environment(&vm.data);
 	vm_init(&vm);
 	char* source = read_file(filename);
 
@@ -67,7 +64,6 @@ static int run_file(const char* filename)
 
 	free(source);
 	vm_destroy(&vm);
-	set_current_lox_environment(env);
 
 	if (result == INTERPRET_COMPILE_ERROR) return 65;
 	if (result == INTERPRET_RUNTIME_ERROR) return 70;
