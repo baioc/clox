@@ -3,6 +3,7 @@
 #include <stdio.h> // fprintf
 #include <stdlib.h> // strtod
 #include <string.h> // memcmp
+#include <assert.h>
 
 #include <ugly/core.h> // swap
 
@@ -910,6 +911,7 @@ static void unary(Parser* parser, bool can_assign)
 	switch (operator_type) {
 		case TOKEN_BANG: emit_byte(parser, OP_NOT); break;
 		case TOKEN_MINUS: emit_byte(parser, OP_NEGATE); break;
+		default: assert(false); // unreachable
 	}
 }
 
@@ -933,6 +935,7 @@ static void binary(Parser* parser, bool can_assign)
 		case TOKEN_MINUS: emit_byte(parser, OP_SUBTRACT); break;
 		case TOKEN_STAR: emit_byte(parser, OP_MULTIPLY); break;
 		case TOKEN_SLASH: emit_byte(parser, OP_DIVIDE); break;
+		default: assert(false); // unreachable
 	}
 }
 
@@ -966,6 +969,7 @@ static void literal(Parser* parser, bool can_assign)
 		case TOKEN_FALSE: emit_byte(parser, OP_FALSE); break;
 		case TOKEN_NIL: emit_byte(parser, OP_NIL); break;
 		case TOKEN_TRUE: emit_byte(parser, OP_TRUE); break;
+		default: assert(false); // unreachable
 	}
 }
 

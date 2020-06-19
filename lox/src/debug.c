@@ -35,7 +35,7 @@ static int jump_instruction(const char* op, const Chunk* chk, intptr_t addr, int
 {
 	uint16_t jump = chunk_get_byte(chk, addr + 1) << 8;
 	jump |= chunk_get_byte(chk, addr + 2);
-	printf("%-16s %4d -> %d\n", op, addr, addr + 3 + sgn * jump);
+	printf("%-16s %4ld -> %ld\n", op, addr, addr + 3 + sgn * jump);
 	return 3;
 }
 
@@ -64,7 +64,7 @@ int disassemble_instruction(const Chunk* chunk, const ValueArray* constants, int
 		case opcode: return invoke_instruction(#opcode, chunk, offset, constants)
 
 	// print byte address and line number
-	printf("%04d ", offset);
+	printf("%04ld ", offset);
 	const int line = chunk_get_line(chunk, offset);
 	if (offset > 0 && line == chunk_get_line(chunk, offset - 1))
 		printf("   | ");
@@ -119,7 +119,7 @@ int disassemble_instruction(const Chunk* chunk, const ValueArray* constants, int
 			for (int i = 0; i < function->upvalues; ++i) {
 				const int local = chunk_get_byte(chunk, offset++);
 				const int index = chunk_get_byte(chunk, offset++);
-				printf("%04d      |                     %s %d\n",
+				printf("%04ld      |                     %s %d\n",
 				       offset - 2, local ? "local" : "upvalue", index);
 			}
 
