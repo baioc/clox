@@ -63,7 +63,6 @@ int disassemble_instruction(const Chunk* chunk, const ValueArray* constants, int
 	#define CASE_INVOKE(opcode) \
 		case opcode: return invoke_instruction(#opcode, chunk, offset, constants)
 
-
 	// print byte address and line number
 	printf("%04d ", offset);
 	const int line = chunk_get_line(chunk, offset);

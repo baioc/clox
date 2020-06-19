@@ -201,13 +201,21 @@ static void runtime_error(VM* vm, const char* format, ...)
 
 	for (int i = vm->frame_count - 1; i >= 0; --i) {
 		const CallFrame* frame = &vm->frames[i];
-		const size_t instruction = frame->program_counter - 1;
-		const int line = chunk_get_line(&frame->subroutine->function->bytecode, instruction);
+		const ObjFunction* function = frame->subroutine->function;
+
+		// loop backwards on operands until we find a bytecode with a valid line
+		intptr_t offset = frame->program_counter;
+		int line = -1;
+		do {
+			offset -= 1;
+			line = chunk_get_line(&function->bytecode, offset);
+		} while (offset > 0 && line < 0);
+
 		fprintf(stderr, "[line %d] in ", line);
-		if (frame->subroutine->function->name == NULL)
+		if (function->name == NULL)
 			fprintf(stderr, "script\n");
 		else
-			fprintf(stderr, "%s()\n", frame->subroutine->function->name->chars);
+			fprintf(stderr, "%s()\n", function->name->chars);
 	}
 
 	reset_stack(vm);

@@ -28,9 +28,9 @@ typedef enum {
 #define TAG_NIL   1 // 01
 #define TAG_FALSE 2 // 10
 #define TAG_TRUE  3 // 11
-#define NIL_VAL ((uint64_t)(QNAN | TAG_NIL))
-#define TRUE_VAL ((uint64_t)(QNAN | TAG_TRUE))
-#define FALSE_VAL ((uint64_t)(QNAN | TAG_FALSE))
+#define NIL_VAL ((Value)(uint64_t)(QNAN | TAG_NIL))
+#define TRUE_VAL ((Value)(uint64_t)(QNAN | TAG_TRUE))
+#define FALSE_VAL ((Value)(uint64_t)(QNAN | TAG_FALSE))
 
 // Lox values with NaN boxing optimization applied.
 typedef uint64_t Value;

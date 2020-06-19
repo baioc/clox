@@ -1,6 +1,6 @@
 # clox
 
-This is my implementation of Robert Nystrom's [Crafting Interpreters](http://www.craftinginterpreters.com/) single-pass compiler and bytecode virtual machine for the [Lox](https://www.craftinginterpreters.com/the-lox-language.html) programming language.
+This is my implementation of Robert Nystrom's [Crafting Interpreters](http://www.craftinginterpreters.com/) single-pass compiler and bytecode virtual machine for the [Lox programming language](https://www.craftinginterpreters.com/the-lox-language.html).
 
 It is written in standard C99 and uses core features such as [Flexible Array Members (FAMs)](https://en.wikipedia.org/wiki/Flexible_array_member), [designated struct initializers](https://gcc.gnu.org/onlinedocs/gcc/Designated-Inits.html) and [Variable-Length Arrays (VLAs)](https://en.wikipedia.org/wiki/Variable-length_array).
 
@@ -14,7 +14,7 @@ In this version there are no global variables (global state is only used for the
 
 ## Licensing
 
-Since this is [what Bob chose](https://github.com/munificent/craftinginterpreters/blob/master/LICENSE) with respect to the book's code, the [Lox](lox/) implementation uses the [MIT License](LICENSE.txt).
+Since this is [what Bob chose](https://github.com/munificent/craftinginterpreters/blob/master/LICENSE) with respect to the book's code, the [Lox implementation](lox/) uses the [MIT License](LICENSE.txt).
 
 Meanwhile, the generic data structures used throughout the codebase were implemented in a separate "Simple Generic Library" (SGL), which is released under the [Artistic License 2.0](sgl/LICENSE.txt).
 It can be found in the [`sgl` folder](sgl/), which works as a completely standalone CMake project.
