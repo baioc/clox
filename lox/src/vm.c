@@ -14,7 +14,7 @@
 #include "object.h" // free_objects
 #include "compiler.h"
 #include "table.h"
-#include "common.h" // GC_HEAP_INITIAL
+#include "common.h" // GC_HEAP_INITIAL, COMPUTED_GOTO
 #if DEBUG_TRACE_EXECUTION
 #	include "debug.h" // disassemble_instruction
 #endif
@@ -430,47 +430,110 @@ static InterpretResult run(VM* vm)
 		push(vm, type_value(a op b)); \
 	} while (0)
 
+#if COMPUTED_GOTO
+
+	static void* jump_table[] = {
+		[OP_CONSTANT]      = &&OP_CONSTANT_LABEL,
+		[OP_NIL]           = &&OP_NIL_LABEL,
+		[OP_TRUE]          = &&OP_TRUE_LABEL,
+		[OP_FALSE]         = &&OP_FALSE_LABEL,
+		[OP_POP]           = &&OP_POP_LABEL,
+		[OP_GET_LOCAL]     = &&OP_GET_LOCAL_LABEL,
+		[OP_SET_LOCAL]     = &&OP_SET_LOCAL_LABEL,
+		[OP_GET_GLOBAL]    = &&OP_GET_GLOBAL_LABEL,
+		[OP_DEFINE_GLOBAL] = &&OP_DEFINE_GLOBAL_LABEL,
+		[OP_SET_GLOBAL]    = &&OP_SET_GLOBAL_LABEL,
+		[OP_GET_UPVALUE]   = &&OP_GET_UPVALUE_LABEL,
+		[OP_SET_UPVALUE]   = &&OP_SET_UPVALUE_LABEL,
+		[OP_GET_PROPERTY]  = &&OP_GET_PROPERTY_LABEL,
+		[OP_SET_PROPERTY]  = &&OP_SET_PROPERTY_LABEL,
+		[OP_GET_SUPER]     = &&OP_GET_SUPER_LABEL,
+		[OP_EQUAL]         = &&OP_EQUAL_LABEL,
+		[OP_GREATER]       = &&OP_GREATER_LABEL,
+		[OP_LESS]          = &&OP_LESS_LABEL,
+		[OP_ADD]           = &&OP_ADD_LABEL,
+		[OP_SUBTRACT]      = &&OP_SUBTRACT_LABEL,
+		[OP_MULTIPLY]      = &&OP_MULTIPLY_LABEL,
+		[OP_DIVIDE]        = &&OP_DIVIDE_LABEL,
+		[OP_NOT]           = &&OP_NOT_LABEL,
+		[OP_NEGATE]        = &&OP_NEGATE_LABEL,
+		[OP_PRINT]         = &&OP_PRINT_LABEL,
+		[OP_JUMP]          = &&OP_JUMP_LABEL,
+		[OP_JUMP_IF_FALSE] = &&OP_JUMP_IF_FALSE_LABEL,
+		[OP_LOOP]          = &&OP_LOOP_LABEL,
+		[OP_CALL]          = &&OP_CALL_LABEL,
+		[OP_INVOKE]        = &&OP_INVOKE_LABEL,
+		[OP_SUPER_INVOKE]  = &&OP_SUPER_INVOKE_LABEL,
+		[OP_CLOSURE]       = &&OP_CLOSURE_LABEL,
+		[OP_CLOSE_UPVALUE] = &&OP_CLOSE_UPVALUE_LABEL,
+		[OP_RETURN]        = &&OP_RETURN_LABEL,
+		[OP_CLASS]         = &&OP_CLASS_LABEL,
+		[OP_INHERIT]       = &&OP_INHERIT_LABEL,
+		[OP_METHOD]        = &&OP_METHOD_LABEL,
+	};
+
+	#define DISPATCH() \
+		debug_trace_run(vm, frame); \
+		instruction = READ_BYTE(); \
+		assert(instruction < ARRAY_SIZE(jump_table)); \
+		goto* jump_table[instruction];
+
+	#define CASE(OPCODE) OPCODE##_LABEL
+
+	#define BREAK() DISPATCH()
+
+#else
+
+	#define DISPATCH() \
+		debug_trace_run(vm, frame); \
+		instruction = READ_BYTE(); \
+		switch (instruction)
+
+	#define CASE(opcode) case opcode
+
+	#define BREAK() break
+
+#endif // COMPUTED_GOTO
+
 	// virtual machine fetch-decode-execute loop
 	for (;;) {
-		debug_trace_run(vm, frame);
-		const uint8_t instruction = READ_BYTE();
-
-		// @TODO: benchmark manual jump table optimized with computed gotos
-		switch (instruction) {
-			case OP_CONSTANT:
+		uint8_t instruction;
+		DISPATCH() // no semicolon here because this may be a switch, see above
+		{
+			CASE(OP_CONSTANT):
 				push(vm, READ_CONSTANT());
-				break;
+				BREAK();
 
-			case OP_NIL:
+			CASE(OP_NIL):
 				push(vm, nil_value());
-				break;
+				BREAK();
 
-			case OP_TRUE:
+			CASE(OP_TRUE):
 				push(vm, bool_value(true));
-				break;
+				BREAK();
 
-			case OP_FALSE:
+			CASE(OP_FALSE):
 				push(vm, bool_value(false));
-				break;
+				BREAK();
 
-			case OP_POP:
+			CASE(OP_POP):
 				pop(vm);
-				break;
+				BREAK();
 
-			case OP_GET_LOCAL: {
+			CASE(OP_GET_LOCAL): {
 				const uint8_t slot = READ_BYTE();
 				push(vm, frame->frame_pointer[slot]);
-				break;
+				BREAK();
 			}
 
-			case OP_SET_LOCAL: {
+			CASE(OP_SET_LOCAL): {
 				const uint8_t slot = READ_BYTE();
 				// assignment is an expression -> no need to pop assigned value
 				frame->frame_pointer[slot] = peek(vm, 0);
-				break;
+				BREAK();
 			}
 
-			case OP_GET_GLOBAL: {
+			CASE(OP_GET_GLOBAL): {
 				/* @NOTE: we could optimize access to globals via statically
 				computed array indexes instead of hash table name lookups */
 				const ObjString* name = READ_STRING();
@@ -480,37 +543,37 @@ static InterpretResult run(VM* vm)
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				push(vm, value);
-				break;
+				BREAK();
 			}
 
-			case OP_DEFINE_GLOBAL:
+			CASE(OP_DEFINE_GLOBAL):
 				table_put(&vm->data.globals, READ_STRING(), peek(vm, 0));
 				pop(vm);
-				break;
+				BREAK();
 
-			case OP_SET_GLOBAL: {
+			CASE(OP_SET_GLOBAL): {
 				ObjString* name = READ_STRING();
 				if (!table_put(&vm->data.globals, name, peek(vm, 0))) {
 					table_delete(&vm->data.globals, name);
 					runtime_error(vm, "Undefined variable '%s'.", name->chars);
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				break;
+				BREAK();
 			}
 
-			case OP_GET_UPVALUE: {
+			CASE(OP_GET_UPVALUE): {
 				const uint8_t slot = READ_BYTE();
 				push(vm, *frame->subroutine->upvalues[slot]->location);
-				break;
+				BREAK();
 			}
 
-			case OP_SET_UPVALUE: {
+			CASE(OP_SET_UPVALUE): {
 				const uint8_t slot = READ_BYTE();
 				*frame->subroutine->upvalues[slot]->location = peek(vm, 0);
-				break;
+				BREAK();
 			}
 
-			case OP_GET_PROPERTY: {
+			CASE(OP_GET_PROPERTY): {
 				if (!value_is_instance(peek(vm, 0))) {
 					runtime_error(vm, "Only instances have properties.");
 					return INTERPRET_RUNTIME_ERROR;
@@ -527,10 +590,10 @@ static InterpretResult run(VM* vm)
 					runtime_error(vm, "Undefined property '%s'.", name->chars);
 					return INTERPRET_RUNTIME_ERROR;
 				}
-				break;
+				BREAK();
 			}
 
-			case OP_SET_PROPERTY: {
+			CASE(OP_SET_PROPERTY): {
 				if (!value_is_instance(peek(vm, 1))) {
 					runtime_error(vm, "Only instances have fields.");
 					return INTERPRET_RUNTIME_ERROR;
@@ -543,33 +606,32 @@ static InterpretResult run(VM* vm)
 				Value value = pop(vm);
 				pop(vm);
 				push(vm, value);
-				break;
+				BREAK();
 			}
 
-			case OP_GET_SUPER: {
+			CASE(OP_GET_SUPER): {
 				ObjString* name = READ_STRING();
 				ObjClass* super = value_as_class(pop(vm));
-				if (!bind_method(vm, super, name))
-					return INTERPRET_RUNTIME_ERROR;
-				break;
+				if (!bind_method(vm, super, name)) return INTERPRET_RUNTIME_ERROR;
+				BREAK();
 			}
 
-			case OP_EQUAL: {
+			CASE(OP_EQUAL): {
 				const Value b = pop(vm);
 				const Value a = pop(vm);
 				push(vm, bool_value(value_equal(a, b)));
-				break;
+				BREAK();
 			}
 
-			case OP_GREATER:
+			CASE(OP_GREATER):
 				BINARY_OP(bool_value, >);
-				break;
+				BREAK();
 
-			case OP_LESS:
+			CASE(OP_LESS):
 				BINARY_OP(bool_value, <);
-				break;
+				BREAK();
 
-			case OP_ADD:
+			CASE(OP_ADD):
 				if (value_is_string(peek(vm, 0)) && value_is_string(peek(vm, 1))) {
 					concatenate_strings(vm);
 				} else if (!value_is_number(peek(vm, 0)) || !value_is_number(peek(vm, 1))) {
@@ -578,77 +640,77 @@ static InterpretResult run(VM* vm)
 				} else {
 					BINARY_OP(number_value, +);
 				}
-				break;
+				BREAK();
 
-			case OP_SUBTRACT:
+			CASE(OP_SUBTRACT):
 				BINARY_OP(number_value, -);
-				break;
+				BREAK();
 
-			case OP_MULTIPLY:
+			CASE(OP_MULTIPLY):
 				BINARY_OP(number_value, *);
-				break;
+				BREAK();
 
-			case OP_DIVIDE:
+			CASE(OP_DIVIDE):
 				BINARY_OP(number_value, /);
-				break;
+				BREAK();
 
-			case OP_NOT:
+			CASE(OP_NOT):
 				push(vm, bool_value(value_is_falsey(pop(vm))));
-				break;
+				BREAK();
 
-			case OP_NEGATE:
+			CASE(OP_NEGATE):
 				if (!value_is_number(peek(vm, 0))) {
 					runtime_error(vm, "Operand must be a number.");
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				push(vm, number_value(-value_as_number(pop(vm))));
-				break;
+				BREAK();
 
-			case OP_PRINT:
+			CASE(OP_PRINT):
 				value_print(pop(vm));
 				printf("\n");
-				break;
+				BREAK();
 
-			case OP_JUMP: {
+			CASE(OP_JUMP): {
 				const uint16_t jump = READ_SHORT();
 				frame->program_counter += jump;
-				break;
+				BREAK();
 			}
 
-			case OP_JUMP_IF_FALSE: {
+			CASE(OP_JUMP_IF_FALSE): {
 				const uint16_t jump = READ_SHORT();
 				if (value_is_falsey(peek(vm, 0)))
 					frame->program_counter += jump;
-				break;
+				BREAK();
 			}
 
-			case OP_LOOP: {
+			CASE(OP_LOOP): {
 				const uint16_t jump = READ_SHORT();
 				frame->program_counter -= jump;
-				break;
+				BREAK();
 			}
 
-			case OP_CALL: {
+			CASE(OP_CALL): {
 				const int argc = READ_BYTE();
 				const Value callee = peek(vm, argc);
 				if (!call_value(vm, callee, argc)) {
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				frame = &vm->frames[vm->frame_count - 1];
-				break;
+				BREAK();
 			}
 
-			case OP_INVOKE: {
+			CASE(OP_INVOKE): {
 				ObjString* method = READ_STRING();
 				const int argc = READ_BYTE();
 				if (!invoke(vm, method, argc)) {
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				frame = &vm->frames[vm->frame_count - 1];
-				break;
+				BREAK();
 			}
 
-			case OP_SUPER_INVOKE: {
+			CASE(OP_SUPER_INVOKE): {
 				ObjString* method = READ_STRING();
 				const int argc = READ_BYTE();
 				ObjClass* super = value_as_class(pop(vm));
@@ -656,10 +718,10 @@ static InterpretResult run(VM* vm)
 					return INTERPRET_RUNTIME_ERROR;
 				}
 				frame = &vm->frames[vm->frame_count - 1];
-				break;
+				BREAK();
 			}
 
-			case OP_CLOSURE: {
+			CASE(OP_CLOSURE): {
 				ObjFunction* function = value_as_function(READ_CONSTANT());
 				ObjClosure* closure = make_obj_closure(&vm->data.objects, function);
 				push(vm, obj_value((Obj*)closure));
@@ -669,15 +731,15 @@ static InterpretResult run(VM* vm)
 					closure->upvalues[i] = local ? capture_upvalue(vm, frame->frame_pointer + index)
 					                             : frame->subroutine->upvalues[index];
 				}
-				break;
+				BREAK();
 			}
 
-			case OP_CLOSE_UPVALUE:
+			CASE(OP_CLOSE_UPVALUE):
 				close_upvalues(vm, vm->stack_pointer - 1);
 				pop(vm);
-				break;
+				BREAK();
 
-			case OP_RETURN: {
+			CASE(OP_RETURN): {
 				const Value result = pop(vm);
 
 				close_upvalues(vm, frame->frame_pointer);
@@ -692,17 +754,17 @@ static InterpretResult run(VM* vm)
 				push(vm, result);
 
 				frame = &vm->frames[vm->frame_count - 1];
-				break;
+				BREAK();
 			}
 
-			case OP_CLASS: {
+			CASE(OP_CLASS): {
 				ObjString* name = READ_STRING();
 				ObjClass* class = make_obj_class(&vm->data.objects, name);
 				push(vm, obj_value((Obj*)class));
-				break;
+				BREAK();
 			}
 
-			case OP_INHERIT: {
+			CASE(OP_INHERIT): {
 				const Value super = peek(vm, 1);
 				if (!value_is_class(super)) {
 					runtime_error(vm, "Superclass must be a class.");
@@ -713,19 +775,24 @@ static InterpretResult run(VM* vm)
 				table_for_each(&superclass->methods, inherit_each_method, class);
 				pop(vm); // subclass
 				// no need to pop super as it is on a separate scope
-				break;
+				BREAK();
 			}
 
-			case OP_METHOD:
+			CASE(OP_METHOD):
 				define_method(vm, READ_STRING());
-				break;
+				BREAK();
 
+	#if !(COMPUTED_GOTO)
 			default:
 				runtime_error(vm, "Invalid opcode %d\n", instruction);
 				return INTERPRET_COMPILE_ERROR;
+	#endif
 		}
 	}
 
+	#undef BREAK
+	#undef CASE
+	#undef DISPATCH
 	#undef BINARY_OP
 	#undef READ_STRING
 	#undef READ_CONSTANT

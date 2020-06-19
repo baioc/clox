@@ -27,4 +27,11 @@
 See http://craftinginterpreters.com/optimization.html#nan-boxing for info. */
 #define NAN_BOXING 1
 
+// Whether the main VM loop should use computed gotos instead of switching.
+#ifdef __GNUC__
+#	define COMPUTED_GOTO 1
+#else
+#	define COMPUTED_GOTO 0
+#endif
+
 #endif // CLOX_COMMON_H
