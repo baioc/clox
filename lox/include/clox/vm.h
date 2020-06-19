@@ -1,7 +1,7 @@
 #ifndef CLOX_VM_H
 #define CLOX_VM_H
 
-#include <sgl/stack.h>
+#include <ugly/stack.h>
 
 #include "chunk.h"
 #include "common.h" // intptr_t, UINT8_MAX, size_t

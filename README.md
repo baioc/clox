@@ -16,5 +16,5 @@ In this version there are no global variables (global state is only used for the
 
 Since this is [what Bob chose](https://github.com/munificent/craftinginterpreters/blob/master/LICENSE) with respect to the book's code, the [Lox implementation](lox/) uses the [MIT License](LICENSE.txt).
 
-Meanwhile, the generic data structures used throughout the codebase were implemented in a separate "Simple Generic Library" (SGL), which is released under the [Artistic License 2.0](sgl/LICENSE.txt).
-It can be found in the [`sgl` folder](sgl/), which works as a completely standalone CMake project.
+Meanwhile, the generic data structures used throughout the codebase were implemented in a separate "Unsafe Generic Library" (UGLY), which is released under the [Artistic License 2.0](ugly/LICENSE.txt).
+Its [folder](ugly/) works as a completely standalone CMake project.

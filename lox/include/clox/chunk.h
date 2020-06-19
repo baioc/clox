@@ -1,7 +1,7 @@
 #ifndef CLOX_CHUNK_H
 #define CLOX_CHUNK_H
 
-#include <sgl/list.h>
+#include <ugly/list.h>
 
 #include "common.h" // uint8_t, intptr_t
 

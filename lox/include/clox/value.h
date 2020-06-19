@@ -1,7 +1,7 @@
 #ifndef CLOX_VALUE_H
 #define CLOX_VALUE_H
 
-#include <sgl/list.h>
+#include <ugly/list.h>
 
 #include "common.h" // bool, uint64_t, NAN_BOXING
 

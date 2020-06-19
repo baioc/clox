@@ -1,7 +1,0 @@
-# CMake
-build/
-bin/
-lib/
-
-# Editor
-.vscode/

@@ -4,7 +4,7 @@
 #include <stdlib.h> // strtod
 #include <string.h> // memcmp
 
-#include <sgl/core.h> // swap
+#include <ugly/core.h> // swap
 
 #include "scanner.h"
 #include "chunk.h"

@@ -4,8 +4,8 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include <sgl/stack.h>
-#include <sgl/core.h> // byte_t, CONTAINER_OF
+#include <ugly/stack.h>
+#include <ugly/core.h> // byte_t, containerof
 
 #include "vm.h"
 #include "common.h" // DEBUG_LOG_GC
@@ -43,7 +43,7 @@ static void sized_free(Environment* env, void* ptr, const char* why)
 	if (ptr == NULL)
 		return;
 
-	struct allocation* allocation = CONTAINER_OF(ptr, struct allocation, block);
+	struct allocation* allocation = containerof(ptr, struct allocation, block);
 	const size_t size = allocation->size;
 	free(allocation);
 
@@ -62,7 +62,7 @@ static void* sized_realloc(Environment* env, void* ptr, size_t size, const char*
 		return NULL;
 	}
 
-	struct allocation* allocation = CONTAINER_OF(ptr, struct allocation, block);
+	struct allocation* allocation = containerof(ptr, struct allocation, block);
 	const size_t old_size = allocation->size;
 	if (size <= old_size)
 		return ptr;

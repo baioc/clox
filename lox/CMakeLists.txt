@@ -6,7 +6,7 @@ set(CMAKE_C_FLAGS "-std=c99")
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_SOURCE_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${CMAKE_SOURCE_DIR}/lib)
 
-include_directories(${CMAKE_SOURCE_DIR}/sgl/include)
+include_directories(${CMAKE_SOURCE_DIR}/ugly/include)
 
 add_executable(lox apps/main.c)
 target_link_libraries(lox PUBLIC clox)
@@ -35,4 +35,4 @@ add_library(clox
 	src/memory.c
 )
 target_include_directories(clox PUBLIC include/clox)
-target_link_libraries(lox PRIVATE sgl)
+target_link_libraries(lox PRIVATE ugly)

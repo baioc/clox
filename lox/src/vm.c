@@ -6,8 +6,8 @@
 #include <time.h> // clock(), CLOCKS_PER_SEC
 #include <assert.h>
 
-#include <sgl/core.h> // ARRAY_SIZE
-#include <sgl/stack.h>
+#include <ugly/core.h> // ARRAY_SIZE
+#include <ugly/stack.h>
 
 #include "chunk.h"
 #include "value.h"

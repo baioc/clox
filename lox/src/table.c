@@ -2,8 +2,8 @@
 
 #include <string.h> // memcmp
 
-#include <sgl/map.h>
-#include <sgl/core.h> // err_t
+#include <ugly/map.h>
+#include <ugly/core.h> // err_t
 
 #include "object.h" // ObjString
 #include "common.h" // NULL

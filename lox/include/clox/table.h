@@ -1,8 +1,8 @@
 #ifndef CLOX_TABLE_H
 #define CLOX_TABLE_H
 
-#include <sgl/map.h>
-#include <sgl/hash.h> // hash_t, fnv_1a
+#include <ugly/map.h>
+#include <ugly/hash.h> // hash_t, fnv_1a
 
 #include "value.h" // Value, forward declaration of object.h
 #include "common.h" // bool
