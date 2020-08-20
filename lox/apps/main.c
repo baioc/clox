@@ -10,6 +10,8 @@ static int repl(void)
 	VM vm;
 	vm_init(&vm);
 
+	printf("/* Lox version 0.19.d by baioc */\n\n");
+
 	for (char line[1024];;) {
 		printf("> ");
 		if (!fgets(line, sizeof(line), stdin)) {
