@@ -1,0 +1,3 @@
+[submodule "ugly"]
+	path = ugly
+	url = https://gitlab.com/baioc/UGLy.git

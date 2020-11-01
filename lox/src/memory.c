@@ -251,7 +251,7 @@ static void remove_each_white(const ObjString* key, Value* value, void* table_pt
 	if (!key->obj.marked)
 		table_delete(table, key);
 	/* @NOTE: modifying the table while iterating through it is dangerous, this
-	only works because we know the implementation of table_delete/map_delete */
+	only works because we know the implementation of table_delete/map_remove */
 }
 
 void collect_garbage()

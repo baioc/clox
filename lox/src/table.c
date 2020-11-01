@@ -82,13 +82,13 @@ bool table_put(Table* table, const ObjString* k, Value value)
 {
 	struct key key = { .str = k->chars, .length = k->length, .hash = k->hash };
 	struct val val = { .string = (ObjString*)k, .value = value };
-	return map_put(table, &key, &val) < 0;
+	return map_insert(table, &key, &val) < 0;
 }
 
 bool table_delete(Table* table, const ObjString* k)
 {
 	struct key key = { .str = k->chars, .length = k->length, .hash = k->hash };
-	return map_delete(table, &key) == 0;
+	return map_remove(table, &key) == 0;
 }
 
 static err_t for_each_adaptor(const void* key, void* value, void* forward)
