@@ -81,16 +81,8 @@ static void* sized_realloc(Environment* env, void* ptr, size_t size, const char*
 	return &new->block;
 }
 
-void* reallocate(void* ptr, size_t size, const char* why)
+void* reallocate(Environment* env, void* ptr, size_t size, const char* why)
 {
-	Environment* env = lox_getenv();
-	if (env == NULL) {
-	#if DEBUG_LOG_GC
-		fprintf(stderr, "GC allocator used for '%s' with no environment!\n", why);
-	#endif
-		return realloc(ptr, size);
-	}
-
 	void* mem = sized_realloc(env, ptr, size, why);
 	if (size != 0 && mem == NULL) {
 		fprintf(stderr, "Out of memory for '%s'!\n", why);
@@ -99,10 +91,10 @@ void* reallocate(void* ptr, size_t size, const char* why)
 
 #if DEBUG_STRESS_GC
 	if (size != 0) // only invoke GC on allocations
-		collect_garbage();
+		collect_garbage(env);
 #else
 	if (env->allocated > env->next_gc)
-		collect_garbage();
+		collect_garbage(env);
 #endif
 
 	return mem;
@@ -235,7 +227,7 @@ static void sweep(Environment* env)
 			object = object->next;
 		} else {
 			Obj* white = object;
-			free_obj(white);
+			free_obj(env, white);
 			object = object->next;
 			if (previous != NULL)
 				previous->next = object;
@@ -254,11 +246,8 @@ static void remove_each_white(const ObjString* key, Value* value, void* table_pt
 	only works because we know the implementation of table_delete/map_remove */
 }
 
-void collect_garbage()
+void collect_garbage(Environment *env)
 {
-	Environment* env = lox_getenv();
-	if (env == NULL) return;
-
 #if DEBUG_LOG_GC
 	printf("-- gc begin\n");
 	const size_t before = env->allocated;

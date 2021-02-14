@@ -9,6 +9,7 @@
 // Forward declaration due to cyclic dependencies.
 typedef struct Obj Obj;
 typedef struct ObjString ObjString;
+struct Environment;
 
 typedef list_t ValueArray;
 
@@ -186,7 +187,7 @@ void value_print(Value value);
 bool value_equal(Value a, Value b);
 
 // Initializes an empty ARRAY. value_array_destroy() must be called on it later.
-void value_array_init(ValueArray* array);
+void value_array_init(ValueArray* array, struct Environment* env);
 
 // Deallocates any resources acquired by value_array_init() on ARRAY.
 void value_array_destroy(ValueArray* array);

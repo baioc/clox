@@ -16,8 +16,8 @@ struct line {
 void chunk_init(Chunk* chunk)
 {
 	assert(OP_CODE_MAX <= UINT8_MAX);
-	list_init(&chunk->code, 0, sizeof(uint8_t), NULL);
-	list_init(&chunk->lines, 0, sizeof(struct line), NULL);
+	list_init(&chunk->code, 0, sizeof(uint8_t), STDLIB_ALLOCATOR);
+	list_init(&chunk->lines, 0, sizeof(struct line), STDLIB_ALLOCATOR);
 }
 
 void chunk_destroy(Chunk* chunk)

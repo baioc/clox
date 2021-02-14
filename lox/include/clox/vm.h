@@ -22,7 +22,7 @@ struct VM;
 struct Compiler;
 
 // Environment structure acting as the VM's heap and data segments.
-typedef struct {
+typedef struct Environment {
 	// GC info
 	size_t allocated;
 	size_t next_gc;
@@ -60,12 +60,6 @@ typedef enum {
 	INTERPRET_RUNTIME_ERROR,
 } InterpretResult;
 
-
-// Gets the current lox execution environment, or NULL if uninitialized.
-Environment* lox_getenv(void);
-
-// Defines the current lox execution environment as ENV, returning the old one.
-Environment* lox_setenv(Environment* env);
 
 /** Adds a constant VALUE to the CONSTANT pool.
  * Returns the pool index where it was added for later access.

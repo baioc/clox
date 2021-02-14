@@ -20,20 +20,6 @@
 #endif
 
 
-static Environment* env = NULL;
-
-Environment* lox_getenv(void)
-{
-	return env;
-}
-
-Environment* lox_setenv(Environment* new)
-{
-	Environment* old = env;
-	env = new;
-	return old;
-}
-
 int constant_add(ValueArray* constants, Value value)
 {
 	const int index = value_array_size(constants);
@@ -122,7 +108,6 @@ static bool native_deleteField(int argc, Value argv[])
 
 void vm_init(VM* vm)
 {
-	lox_setenv(&vm->data);
 	vm->data.vm = vm;
 	vm->data.compiler = NULL;
 
@@ -131,14 +116,14 @@ void vm_init(VM* vm)
 	vm->data.allocated = 0;
 	vm->data.next_gc = GC_HEAP_INITIAL;
 
-	stack_init(&vm->data.grays, 0, sizeof(Obj*), NULL);
+	stack_init(&vm->data.grays, 0, sizeof(Obj*), STDLIB_ALLOCATOR);
 	vm->init_string = NULL;
 	vm->data.objects = NULL;
 
-	value_array_init(&vm->data.constants);
-	table_init(&vm->data.strings);
-	table_init(&vm->data.globals);
-	vm->init_string = make_obj_string(&vm->data.objects, &vm->data.strings, "init", 4);
+	value_array_init(&vm->data.constants, &vm->data);
+	table_init(&vm->data.strings, &vm->data);
+	table_init(&vm->data.globals, &vm->data);
+	vm->init_string = make_obj_string(&vm->data, "init", 4);
 
 	define_native(vm, "clock", native_clock);
 	define_native(vm, "error", native_error);
@@ -153,10 +138,9 @@ void vm_destroy(VM* vm)
 	table_destroy(&vm->data.globals);
 	table_destroy(&vm->data.strings);
 	value_array_destroy(&vm->data.constants);
-	free_objects(&vm->data.objects);
+	free_objects(&vm->data);
 	vm->init_string = NULL;
 	stack_destroy(&vm->data.grays);
-	vm->data.vm = NULL;
 }
 
 static void push(VM* vm, Value value)
@@ -186,7 +170,7 @@ static void concatenate_strings(VM* vm)
 {
 	const ObjString* b = value_as_string(peek(vm, 0));
 	const ObjString* a = value_as_string(peek(vm, 1));
-	ObjString* c = obj_string_concat(&vm->data.objects, &vm->data.strings, a, b);
+	ObjString* c = obj_string_concat(&vm->data, a, b);
 	pop(vm);
 	pop(vm);
 	push(vm, obj_value((Obj*)c));
@@ -224,9 +208,8 @@ static void runtime_error(VM* vm, const char* format, ...)
 
 static void define_native(VM* vm, const char* name, NativeFn function)
 {
-	push(vm, obj_value((Obj*)make_obj_string(&vm->data.objects, &vm->data.strings,
-	                                         name, strlen(name))));
-	push(vm, obj_value((Obj*)make_obj_native(&vm->data.objects, function)));
+	push(vm, obj_value((Obj*)make_obj_string(&vm->data, name, strlen(name))));
+	push(vm, obj_value((Obj*)make_obj_native(&vm->data, function)));
 	table_put(&vm->data.globals, value_as_string(peek(vm, 1)), peek(vm, 0));
 	pop(vm);
 	pop(vm);
@@ -274,7 +257,7 @@ static bool call_value(VM* vm, Value callee, int argc)
 		}
 		case OBJ_CLASS: { // calling a class evokes its constructor
 			ObjClass* class = value_as_class(callee);
-			ObjInstance* instance = make_obj_instance(&vm->data.objects, class);
+			ObjInstance* instance = make_obj_instance(&vm->data, class);
 			vm->stack_pointer[-(argc + 1)] = obj_value((Obj*)instance);
 			Value initializer;
 			if (table_get(&class->methods, vm->init_string, &initializer)) {
@@ -345,7 +328,7 @@ static ObjUpvalue* capture_upvalue(VM* vm, Value* local)
 		return curr;
 
 	// otherwise, create a upvalue and insert it into the sorted list
-	ObjUpvalue* upvalue = make_obj_upvalue(&vm->data.objects, local);
+	ObjUpvalue* upvalue = make_obj_upvalue(&vm->data, local);
 	upvalue->next = curr;
 	if (prev != NULL) {
 		prev->next = upvalue;
@@ -376,11 +359,8 @@ static void define_method(VM* vm, ObjString* name)
 static bool bind_method(VM* vm, ObjClass* class, ObjString* name)
 {
 	Value meth;
-	if (!table_get(&class->methods, name, &meth)) {
-		return false;
-	}
-	ObjBoundMethod* bound = make_obj_method(&vm->data.objects,
-	                                        peek(vm, 0), value_as_closure(meth));
+	if (!table_get(&class->methods, name, &meth)) return false;
+	ObjBoundMethod* bound = make_obj_method(&vm->data, peek(vm, 0), value_as_closure(meth));
 	pop(vm);
 	push(vm, obj_value((Obj*)bound));
 	return true;
@@ -723,7 +703,7 @@ static InterpretResult run(VM* vm)
 
 			CASE(OP_CLOSURE): {
 				ObjFunction* function = value_as_function(READ_CONSTANT());
-				ObjClosure* closure = make_obj_closure(&vm->data.objects, function);
+				ObjClosure* closure = make_obj_closure(&vm->data, function);
 				push(vm, obj_value((Obj*)closure));
 				for (int i = 0; i < closure->upvalue_count; ++i) {
 					const uint8_t local = READ_BYTE();
@@ -759,7 +739,7 @@ static InterpretResult run(VM* vm)
 
 			CASE(OP_CLASS): {
 				ObjString* name = READ_STRING();
-				ObjClass* class = make_obj_class(&vm->data.objects, name);
+				ObjClass* class = make_obj_class(&vm->data, name);
 				push(vm, obj_value((Obj*)class));
 				BREAK();
 			}
@@ -807,7 +787,7 @@ InterpretResult vm_interpret(VM* vm, const char* source)
 
 	// setup initial call frame
 	push(vm, obj_value((Obj*)main));
-	ObjClosure* program = make_obj_closure(&vm->data.objects, main);
+	ObjClosure* program = make_obj_closure(&vm->data, main);
 	pop(vm);
 	push(vm, obj_value((Obj*)program));
 	call(vm, program, 0);

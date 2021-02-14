@@ -8,11 +8,14 @@
 #include "common.h" // bool
 
 
+// Forward declaration due to cyclic dependencies.
+struct Environment;
+
 typedef map_t Table;
 
 
 // Initializes an empty TABLE. table_destroy() must be called on it later.
-void table_init(Table* table);
+void table_init(Table* table, struct Environment* env);
 
 // Deallocates any resources acquired by table_init().
 void table_destroy(Table* table);

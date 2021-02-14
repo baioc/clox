@@ -2,12 +2,12 @@
 #define CLOX_MEMORY_H
 
 #include "common.h" // size_t
+#include "vm.h" // Environment
 
-/* Custom allocator with the same protocol of stdlib's realloc, plus an extra
-justification parameter. This will use the current Lox environment. */
-void* reallocate(void* ptr, size_t size, const char* why);
+// GC allocator following realloc's protocol, with added ENV and WHY parameters.
+void* reallocate(Environment* env, void* ptr, size_t size, const char* why);
 
-// Recycles previously VM-allocated memory unused in the current Lox environment.
-void collect_garbage(void);
+// GC collector.
+void collect_garbage(Environment *env);
 
 #endif // CLOX_MEMORY_H

@@ -177,39 +177,37 @@ inline ObjBoundMethod* value_as_method(Value value)
 
 void obj_print(Value value);
 
-// Deallocates a single OBJECT from the heap.
-void free_obj(Obj* object);
+// Deallocates a single OBJECT from ENV's heap.
+void free_obj(struct Environment *env, Obj* object);
 
-// Deallocates all Objs in the OBJECTS linked list.
-void free_objects(Obj** objects);
+// Deallocates all Objs from ENV.
+void free_objects(struct Environment *env);
 
 // Allocates a new ObjString while copying given STR.
-ObjString* make_obj_string(Obj** objects, Table* strings,
-                           const char* str, size_t str_len);
+ObjString* make_obj_string(struct Environment *env, const char* str, size_t str_len);
 
 // Allocates a new ObjString which is the concatenation of PREFIX and SUFFIX.
-ObjString* obj_string_concat(Obj** objects, Table* strings,
-                             const ObjString* prefix, const ObjString* sufix);
+ObjString* obj_string_concat(struct Environment *env, const ObjString* prefix, const ObjString* sufix);
 
-// Allocates a new ObjFunction in the OBJECTS linked list.
-ObjFunction* make_obj_function(Obj** objects);
+// Allocates a new ObjFunction in ENV's heap.
+ObjFunction* make_obj_function(struct Environment *env);
 
-// Allocates a new ObjNative FUNCTION in the OBJECTS linked list.
-ObjNative* make_obj_native(Obj** objects, NativeFn function);
+// Allocates a new ObjNative FUNCTION in ENV's heap.
+ObjNative* make_obj_native(struct Environment *env, NativeFn function);
 
-// Allocates a new ObjClojure FUNCTION in the OBJECTS linked list.
-ObjClosure* make_obj_closure(Obj** objects, ObjFunction* function);
+// Allocates a new ObjClojure FUNCTION in ENV's heap.
+ObjClosure* make_obj_closure(struct Environment *env, ObjFunction* function);
 
-// Allocates a new ObjUpvalue with SLOT in the OBJECTS linked list.
-ObjUpvalue* make_obj_upvalue(Obj** objects, Value* slot);
+// Allocates a new ObjUpvalue with SLOT in ENV's heap.
+ObjUpvalue* make_obj_upvalue(struct Environment *env, Value* slot);
 
-// Allocates a new ObjClass called NAME in the OBJECTS linked list.
-ObjClass* make_obj_class(Obj** objects, ObjString* name);
+// Allocates a new ObjClass called NAME in ENV's heap.
+ObjClass* make_obj_class(struct Environment *env, ObjString* name);
 
-// Allocates a new ObjInstance of CLASS in the OBJECTS linked list.
-ObjInstance* make_obj_instance(Obj** objects, ObjClass* class);
+// Allocates a new ObjInstance of CLASS in ENV's heap.
+ObjInstance* make_obj_instance(struct Environment *env, ObjClass* class);
 
 // Allocates a new ObjBoundMethod METHOD bound to RECEIVER.
-ObjBoundMethod* make_obj_method(Obj** objects, Value receiver, ObjClosure* method);
+ObjBoundMethod* make_obj_method(struct Environment *env, Value receiver, ObjClosure* method);
 
 #endif // CLOX_OBJECT_H

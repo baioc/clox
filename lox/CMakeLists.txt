@@ -1,16 +1,14 @@
 cmake_minimum_required(VERSION 3.8)
-project(Lox LANGUAGES C)
 
+project(Lox LANGUAGES C)
 set(CMAKE_C_FLAGS "-std=c99")
 
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_SOURCE_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${CMAKE_SOURCE_DIR}/lib)
 
-include_directories(${CMAKE_SOURCE_DIR}/ugly/include)
-
 add_executable(lox apps/main.c)
-target_link_libraries(lox PUBLIC clox)
 target_include_directories(lox PUBLIC include/clox)
+target_link_libraries(lox PUBLIC clox)
 
 add_library(clox
 	include/clox/common.h
@@ -35,4 +33,4 @@ add_library(clox
 	src/memory.c
 )
 target_include_directories(clox PUBLIC include/clox)
-target_link_libraries(lox PRIVATE ugly)
+target_link_libraries(clox PUBLIC ugly)

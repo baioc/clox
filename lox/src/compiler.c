@@ -242,7 +242,7 @@ static uint8_t make_constant(Parser* parser, Value value)
 static uint8_t make_string_constant(Parser* parser, const char* chars, size_t len)
 {
 	// build a string object (or find it already interned)
-	ObjString* str = make_obj_string(&parser->data->objects, &parser->data->strings, chars, len);
+	ObjString* str = make_obj_string(parser->data, chars, len);
 
 	// check if this string was previously registered and if so, return its id
 	Value index = nil_value();
@@ -534,14 +534,13 @@ static void function(Parser* p, FunctionType type)
 {
 	// temporarily swap local with "current" compiler
 	Compiler compiler;
-	swap(&p->compiler, &compiler, sizeof(Compiler));
+	memswap(&p->compiler, &compiler, sizeof(Compiler));
 	p->compiler.enclosing = &compiler;
 
 	// each function has its own compiler information
 	compile_begin(&p->compiler, type, &compiler);
-	p->compiler.subroutine = make_obj_function(&p->data->objects);
-	p->compiler.subroutine->name = make_obj_string(&p->data->objects, &p->data->strings,
-	                                               p->previous.start, p->previous.length);
+	p->compiler.subroutine = make_obj_function(p->data);
+	p->compiler.subroutine->name = make_obj_string(p->data, p->previous.start, p->previous.length);
 
 	// compile formal argument list
 	scope_begin(p);
@@ -563,7 +562,7 @@ static void function(Parser* p, FunctionType type)
 	ObjFunction* function = compile_end(p);
 
 	// restore enclosing compilation context and emit function obj definition
-	swap(&p->compiler, &compiler, sizeof(Compiler));
+	memswap(&p->compiler, &compiler, sizeof(Compiler));
 	emit_bytes(p, OP_CLOSURE, make_constant(p, obj_value((Obj*)function)));
 
 	// capture all upvalues compiled in the closure's compilation context
@@ -995,7 +994,7 @@ ObjFunction* compile(const char* source, Environment* data)
 	parser.class = NULL;
 	data->compiler = &parser.compiler;
 	compile_begin(&parser.compiler, TYPE_SCRIPT, NULL);
-	parser.compiler.subroutine = make_obj_function(&data->objects);
+	parser.compiler.subroutine = make_obj_function(data);
 
 	// register any previously interned strings into the chunk's constant pool
 	table_for_each(&data->strings, register_string_constant, &parser);

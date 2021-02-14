@@ -44,14 +44,16 @@ static int comp(const void* a, const void* b)
 		return memcmp(s1->str, s2->str, s1->length);
 }
 
-static void* realloc_table(void* ptr, size_t size)
+static void* table_malloc(struct allocator *ctx, void* ptr, size_t size)
 {
-	return reallocate(ptr, size, "Table");
+	return reallocate((Environment*)ctx->environment, ptr, size, "Table");
 }
 
-void table_init(Table* tab)
+void table_init(Table* table, Environment* env)
 {
-	map_init(tab, 0, sizeof(struct key), sizeof(struct val), comp, hash, realloc_table);
+	map_init(table, 0,
+	         sizeof(struct key), sizeof(struct val), comp, hash,
+	         (struct allocator){ .method = table_malloc, .environment = env });
 }
 
 void table_destroy(Table* table)

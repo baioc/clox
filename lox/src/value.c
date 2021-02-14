@@ -54,14 +54,16 @@ bool value_equal(Value a, Value b)
 #endif
 }
 
-static void* realloc_value_array(void* ptr, size_t size)
+static void* value_array_malloc(struct allocator *ctx, void* ptr, size_t size)
 {
-	return reallocate(ptr, size, "ValueArray");
+	return reallocate((Environment*)ctx->environment, ptr, size, "ValueArray");
 }
 
-void value_array_init(ValueArray* array)
+void value_array_init(ValueArray* array, Environment* env)
 {
-	list_init(array, 0, sizeof(Value), realloc_value_array);
+	list_init(array, 0,
+	          sizeof(Value),
+	          (struct allocator){ .method = value_array_malloc, .environment = env });
 }
 
 void value_array_destroy(ValueArray* array)
