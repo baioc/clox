@@ -1,8 +1,74 @@
 # clox
 
-This is my implementation of Robert Nystrom's [Crafting Interpreters](http://www.craftinginterpreters.com/) single-pass compiler and bytecode virtual machine for the [Lox programming language](https://www.craftinginterpreters.com/the-lox-language.html).
+**NOTE:** We use git submodules, so make sure to clone this repo with `git clone --recursive`
 
-It is written in standard C99 and uses core features such as [Flexible Array Members (FAMs)](https://en.wikipedia.org/wiki/Flexible_array_member), [designated struct initializers](https://gcc.gnu.org/onlinedocs/gcc/Designated-Inits.html) and [Variable-Length Arrays (VLAs)](https://en.wikipedia.org/wiki/Variable-length_array).
+This is my C99 implementation of Robert Nystrom's [Crafting Interpreters](http://www.craftinginterpreters.com/) single-pass compiler and bytecode virtual machine for the [Lox programming language](https://www.craftinginterpreters.com/the-lox-language.html).
+
+
+## Sample Lox script
+
+```js
+var t0 = clock();
+
+{
+	print "Hello, World!";    // => "Hello, World!"
+	print ("a" + "a") + "aa"; // => "aaaa"
+	print 123 == "123";       // => false
+}
+
+fun empower(operation, base) {
+	fun power(x, n) {
+		var y = base;
+		while (n > 0) {
+			y = operation(y, x);
+			n = n - 1;
+		}
+		return y;
+	}
+	return power;
+}
+fun add(a, b) { return a + b; }
+fun printfn(x) { print x; }
+
+{
+	print add(4, 3);             // => 7
+
+	var times = empower(add, 0);
+	print times(4, 3);           // => 12
+
+	var pow = empower(times, 1);
+	print pow(4, 3);             // => 64
+}
+
+{
+	print add("Hello, ", "World!"); // => "Hello, World!"
+	var repeat = empower(add, "");
+	print repeat("a", 4);           // => "aaaa"
+}
+
+class A {
+	init() {
+		error("K.O."); // should never run
+	}
+}
+class B < A {
+	init() {
+		print "OK";
+	}
+	foo(x) {
+		print this;
+	}
+}
+
+{
+	var obj = B(); // => "OK"
+	obj.foo(nil);  // => B instance
+	setField(obj, "foo", printfn);
+	obj.foo("ok"); // => "ok"
+}
+
+print clock() - t0;
+```
 
 
 ## Notes
@@ -16,5 +82,4 @@ In this version there are no global variables and function-like preprocessor mac
 
 Since this is [what Bob chose](https://github.com/munificent/craftinginterpreters/blob/master/LICENSE) with respect to the book's code, the [Lox implementation](lox/) uses the [MIT License](LICENSE.txt).
 
-Meanwhile, the generic data structures used throughout the codebase were implemented in a separate ["Unsafe Generic Library" (UGLy)](https://gitlab.com/baioc/UGLy), which has its own license.
-It is actually imported as a git submodule, so make sure to clone this repo with `git clone --recursive`.
+Meanwhile, the generic data structures used throughout the codebase were implemented in a separate submodule ["Unsafe Generic Library" (UGLy)](ugly/), which has its own license.
