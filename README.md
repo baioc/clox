@@ -82,4 +82,4 @@ In this version there are no global variables and function-like preprocessor mac
 
 Since this is [what Bob chose](https://github.com/munificent/craftinginterpreters/blob/master/LICENSE) with respect to the book's code, the [Lox implementation](lox/) uses the [MIT License](LICENSE.txt).
 
-Meanwhile, the generic data structures used throughout the codebase were implemented in a separate submodule ["Unsafe Generic Library" (UGLy)](ugly/), which has its own license.
+Meanwhile, the generic data structures used throughout the codebase were implemented in a separate submodule ["Unsafe Generic Library" (UGLy)](https://gitlab.com/baioc/UGLy), which has its own license.
